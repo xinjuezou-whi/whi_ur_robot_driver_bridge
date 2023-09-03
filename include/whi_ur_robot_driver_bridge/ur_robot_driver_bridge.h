@@ -35,5 +35,6 @@ namespace whi_ur_robot_driver_bridge
 
     protected:
         std::shared_ptr<ros::NodeHandle> node_handle_{ nullptr };
+        std::unique_ptr<ros::ServiceClient> client_robot_mode_{ nullptr };
 	};
 } // namespace whi_ur_robot_driver_bridge

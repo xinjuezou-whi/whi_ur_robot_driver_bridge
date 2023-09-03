@@ -10,6 +10,7 @@ add_compile_options(-std=c++17)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
+  ur_dashboard_msgs
 )
 
 ## System dependencies are found with CMake's conventions
