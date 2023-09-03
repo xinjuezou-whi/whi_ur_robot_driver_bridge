@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- argument -->
+
+  <!-- params -->
+  <rosparam file="$(find whi_ur_robot_driver_bridge)/config/config.yaml" command="load" subst_value="true"/>
+
+  <!-- hardware interface -->
+  <node name="whi_ur_robot_driver_bridge" pkg="whi_ur_robot_driver_bridge" type="whi_ur_robot_driver_bridge_node" output="screen"/>
+</launch>
