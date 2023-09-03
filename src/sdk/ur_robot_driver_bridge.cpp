@@ -32,12 +32,12 @@ namespace whi_ur_robot_driver_bridge
         // node_handle_->param("planning_group", planningGroup, std::string("whi_arm"));
 
         client_robot_mode_ = std::make_unique<ros::ServiceClient>(
-            node_handle_->serviceClient<ur_dashboard_msgs::GetRobotMode>("get_robot_mode"));
+            node_handle_->serviceClient<ur_dashboard_msgs::GetRobotMode>("/ur_hardware_interface/dashboard/get_robot_mode"));
         ur_dashboard_msgs::GetRobotMode srv;
         if (client_robot_mode_->call(srv))
         {
-            std::cout << "robot mode:" << srv.response.robot_mode.mode << ",answer:" << srv.response.answer
-                << ",state:" << (srv.response.success ? "true" : "false");
+            std::cout << "robot mode:" << int(srv.response.robot_mode.mode) << ",answer:" << srv.response.answer
+                << ",state:" << (srv.response.success ? "true" : "false") << std::endl;
         }
         else
         {
