@@ -14,3 +14,8 @@ whi_ur_robot_driver_bridge:
   try_max_count: 10
   external_program: external_ctrl.urp
 ```
+
+## Usage
+```
+roslaunch whi_ur_robot_driver_bridge whi_ur_robot_driver_bridge.launch kinematics_config:=${HOME}/ur10e_calibration.yaml arm_model:=ur10e robot_ip:=192.168.56.100 script_sender_port:=29999
+```
