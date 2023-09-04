@@ -159,7 +159,7 @@ namespace whi_ur_robot_driver_bridge
                         // service load_program
                         service = "/ur_hardware_interface/dashboard/load_program";
                         auto clientLoadProgram = std::make_unique<ros::ServiceClient>(
-                            node_handle_->serviceClient<ur_dashboard_msgs::GetProgramState>(service));
+                            node_handle_->serviceClient<ur_dashboard_msgs::Load>(service));
                         ur_dashboard_msgs::Load srvLoadProgram;
                         srvLoadProgram.request.filename = this->external_program_;
                         if (!clientLoadProgram->call(srvLoadProgram))
