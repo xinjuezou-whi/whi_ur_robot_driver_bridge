@@ -16,6 +16,7 @@ whi_ur_robot_driver_bridge:
 ```
 
 ## Usage
+It is recommended to extract the calibration params first, then feed it to ur_robot_driver. Please refer to [here](https://github.com/UniversalRobots/Universal_Robots_ROS_Driver)
 ```
 roslaunch whi_ur_robot_driver_bridge whi_ur_robot_driver_bridge.launch kinematics_config:=${HOME}/ur10e_calibration.yaml arm_model:=ur10e robot_ip:=192.168.56.100 script_sender_port:=29999
 ```
