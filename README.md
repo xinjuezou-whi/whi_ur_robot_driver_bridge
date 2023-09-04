@@ -1,5 +1,8 @@
 # whi_ur_robot_driver_bridge
-launch ur_robot_driver while calling services to automatically initialize the arm under remote control mode
+Launch ur_robot_driver while calling services to automatically initialize the arm under remote control mode
+
+## Dependency
+This package depends on the ur_robot_driver and externalcontrol-x.x.x.urcap. Please refer to the [official site](https://github.com/UniversalRobots/Universal_Robots_ROS_Driver) for detailed instructions
 
 ## Bringup process
 ![process drawio](https://github.com/xinjuezou-whi/whi_ur_robot_driver_bridge/assets/72239958/4786cfe3-d9ce-44b5-aff0-a71f11859356)
