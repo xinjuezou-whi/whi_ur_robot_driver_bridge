@@ -57,6 +57,7 @@ namespace whi_ur_robot_driver_bridge
             {
                 bool proceed = true;
 
+                /// query the robot state
                 // service get_robot_mode
                 std::string service("/ur_hardware_interface/dashboard/get_robot_mode");
                 auto clientRobotMode = std::make_unique<ros::ServiceClient>(
@@ -78,13 +79,8 @@ namespace whi_ur_robot_driver_bridge
                         std::this_thread::sleep_for(std::chrono::seconds(this->try_duration_));
                     }
                 }
-                tryCount = 0;
-#ifdef DEBUG
-                std::cout << "robot mode:" << int(srvRobotMode.response.robot_mode.mode) << ",answer:"
-                    << srvRobotMode.response.answer << ",state:" << (srvRobotMode.response.success ? "true" : "false")
-                    << std::endl;
-#endif
 
+                /// handle power on process
                 while (proceed && clientRobotMode->call(srvRobotMode))
                 {
                     switch (srvRobotMode.response.robot_mode.mode)
@@ -145,7 +141,7 @@ namespace whi_ur_robot_driver_bridge
                     std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 }
 
-                // load urp program
+                /// load urp program
                 proceed = true;
                 // service program_state
                 service = "/ur_hardware_interface/dashboard/program_state";
