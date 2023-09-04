@@ -154,7 +154,8 @@ namespace whi_ur_robot_driver_bridge
                 ur_dashboard_msgs::GetProgramState srvProgramState;
                 while (proceed && clientProgramState->call(srvProgramState))
                 {
-                    if (srvProgramState.response.program_name.find("urp") == std::string::npos)
+                    if (srvProgramState.response.program_name.find("urp") == std::string::npos ||
+                        srvProgramState.response.program_name != this->external_program_)
                     {
                         // service load_program
                         service = "/ur_hardware_interface/dashboard/load_program";
