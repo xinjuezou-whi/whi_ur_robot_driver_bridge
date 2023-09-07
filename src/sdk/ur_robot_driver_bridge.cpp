@@ -142,42 +142,27 @@ namespace whi_ur_robot_driver_bridge
                 }
 
                 /// load urp program
-                proceed = true;
-                // service program_state
-                service = "/ur_hardware_interface/dashboard/program_state";
-                auto clientProgramState = std::make_unique<ros::ServiceClient>(
-                    node_handle_->serviceClient<ur_dashboard_msgs::GetProgramState>(service));
-                ur_dashboard_msgs::GetProgramState srvProgramState;
-                while (proceed && clientProgramState->call(srvProgramState))
+                // service load_program
+                service = "/ur_hardware_interface/dashboard/load_program";
+                auto clientLoadProgram = std::make_unique<ros::ServiceClient>(
+                    node_handle_->serviceClient<ur_dashboard_msgs::Load>(service));
+                ur_dashboard_msgs::Load srvLoadProgram;
+                srvLoadProgram.request.filename = this->external_program_;
+                if (!clientLoadProgram->call(srvLoadProgram))
                 {
-                    if (srvProgramState.response.program_name.find("urp") == std::string::npos ||
-                        srvProgramState.response.program_name != this->external_program_)
+                    proceed = false;
+                    ROS_ERROR_STREAM("failed to call service " << service);
+                }
+                else
+                {
+                    if (!srvLoadProgram.response.success)
                     {
-                        // service load_program
-                        service = "/ur_hardware_interface/dashboard/load_program";
-                        auto clientLoadProgram = std::make_unique<ros::ServiceClient>(
-                            node_handle_->serviceClient<ur_dashboard_msgs::Load>(service));
-                        ur_dashboard_msgs::Load srvLoadProgram;
-                        srvLoadProgram.request.filename = this->external_program_;
-                        if (!clientLoadProgram->call(srvLoadProgram))
-                        {
-                            proceed = false;
-                            ROS_ERROR_STREAM("failed to call service " << service);
-                        }
-                        else
-                        {
-                            if (!srvLoadProgram.response.success)
-                            {
-                                proceed = false;
-                                ROS_ERROR_STREAM("failed to execute service " << service << " with filename "
-                                    << srvLoadProgram.request.filename);
-                            }
-                        }
+                        proceed = false;
+                        ROS_ERROR_STREAM("failed to execute service " << service << " with filename "
+                            << srvLoadProgram.request.filename);
                     }
                     else
                     {
-                        proceed = false;
-
                         // service play
                         service = "/ur_hardware_interface/dashboard/play";
                         auto clientPlay = std::make_unique<ros::ServiceClient>(
