@@ -1,5 +1,5 @@
 # whi_ur_robot_driver_bridge
-Launch ur_robot_driver while calling services to automatically initialize the arm under remote control mode
+Launch ur_robot_driver while calling services to initialize the arm under remote control mode automatically
 
 ## Dependency
 This package depends on the ur_robot_driver and externalcontrol-x.x.x.urcap. Please refer to the [official site](https://github.com/UniversalRobots/Universal_Robots_ROS_Driver) for detailed instructions
@@ -13,7 +13,12 @@ whi_ur_robot_driver_bridge:
   try_duration: 2 # second
   try_max_count: 10
   external_program: external_ctrl.urp
+  protective_query_frequency: 5.0 #Hz
 ```
+
+If the param "protective_query_frequency" is set and greater than zero, a thread will be spawned to query the safety mode, and automatically recover UR from protective stop to normal mode.
+
+NOTE: Before activating this mechanism, it is the user's responsibility to ensure the consecutive path is well handled after recovering from the protective stop.
 
 ## Usage
 It is recommended to extract the calibration params first, then feed it to ur_robot_driver. Please refer to [here](https://github.com/UniversalRobots/Universal_Robots_ROS_Driver)
