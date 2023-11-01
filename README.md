@@ -14,11 +14,14 @@ whi_ur_robot_driver_bridge:
   try_max_count: 10
   external_program: external_ctrl.urp
   protective_query_frequency: 5.0 #Hz
+  motion_state_topic: arm_motion_state
 ```
 
 If the param "protective_query_frequency" is set and greater than zero, a thread will be spawned to query the safety mode, and automatically recover UR from protective stop to normal mode.
 
 NOTE: Before activating this mechanism, it is the user's responsibility to ensure the consecutive path is well handled after recovering from the protective stop.
+
+Param "motion_state_topic" is activated while the arm enters the protective stop, and the motion state message with fault will be sent to its subscribers.
 
 ## Usage
 It is recommended to extract the calibration params first, then feed it to ur_robot_driver. Please refer to [here](https://github.com/UniversalRobots/Universal_Robots_ROS_Driver)
