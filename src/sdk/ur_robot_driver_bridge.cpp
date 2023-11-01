@@ -15,6 +15,8 @@ All text above must be included in any redistribution.
 
 ******************************************************************/
 #include "whi_ur_robot_driver_bridge/ur_robot_driver_bridge.h"
+#include "whi_interfaces/WhiMotionState.h"
+
 #include <ur_dashboard_msgs/GetRobotMode.h>
 #include <ur_dashboard_msgs/GetProgramState.h>
 #include <ur_dashboard_msgs/GetSafetyMode.h>
@@ -62,6 +64,11 @@ namespace whi_ur_robot_driver_bridge
         beStandby();
         if (safty_query_duration_ > 0)
         {
+            // create state publisher
+            std::string stateTopic;
+            node_handle_->param("motion_state_topic", stateTopic, std::string("arm_moton_state"));
+            pub_motion_state_ = std::make_unique<ros::Publisher>(
+                node_handle_->advertise<whi_interfaces::WhiMotionState>(stateTopic, 1));
             // spawn the safty monitor thread
 		    th_safty_ = std::thread(std::bind(&UrRobotDriverBridge::threadSafty, this));
         }
@@ -253,6 +260,10 @@ namespace whi_ur_robot_driver_bridge
             {
                 ROS_WARN_STREAM("UR entered protective stop state");
 
+                whi_interfaces::WhiMotionState msg;
+                msg.state = whi_interfaces::WhiMotionState::STA_FAULT;
+                pub_motion_state_->publish(msg);
+
                 // unlock protective
                 service = "/ur_hardware_interface/dashboard/unlock_protective_stop";
                 auto clientUnlockProtective = std::make_unique<ros::ServiceClient>(
@@ -273,15 +284,37 @@ namespace whi_ur_robot_driver_bridge
                         ROS_ERROR_STREAM("failed to execute service " << service);
                     }
                 }
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
                 // reload program
                 if (requestLoadProgram())
                 {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+                    // service close popup
+                    std::string service("/ur_hardware_interface/dashboard/close_popup");
+                    auto clientClose = std::make_unique<ros::ServiceClient>(
+                        node_handle_->serviceClient<std_srvs::Trigger>(service));
+                    std_srvs::Trigger srv;
+                    if (clientClose->call(srv))
+                    {
+                        if (srv.response.success)
+                        {
+                            ROS_INFO_STREAM("safety popup is closed successfully");
+                        }
+                        else
+                        {
+                            ROS_ERROR_STREAM("failed to execute service " << service);
+                        }
+                    }
+                    else
+                    {
+                        ROS_ERROR_STREAM("failed to call service " << service);
+                    }
+
                     // replay
                     requestPlay();
-                    if (safty_query_duration_ < 300)
-                    {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(300));
-                    }
                 }
             }
 

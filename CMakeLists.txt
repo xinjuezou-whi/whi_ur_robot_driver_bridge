@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
   ur_dashboard_msgs
+  whi_interfaces
 )
 
 ## System dependencies are found with CMake's conventions
