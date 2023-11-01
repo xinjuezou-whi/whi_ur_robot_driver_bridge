@@ -7,7 +7,7 @@ Features:
 
 Written by Xinjue Zou, xinjue.zou@outlook.com
 
-GNU General Public License, check LICENSE for more information.
+Apache License Version 2.0, check LICENSE for more information.
 All text above must be included in any redistribution.
 
 Changelog:
@@ -34,7 +34,7 @@ void signalHandler(int Signal)
 int main(int argc, char** argv)
 {
 	/// node version and copyright announcement
-	std::cout << "\nWHI UR robot driver bridge VERSION 00.04" << std::endl;
+	std::cout << "\nWHI UR robot driver bridge VERSION 00.05.0" << std::endl;
 	std::cout << "Copyright © 2023-2024 Wheel Hub Intelligent Co.,Ltd. All rights reserved\n" << std::endl;
 
 	/// ros infrastructure

@@ -10,7 +10,7 @@ Dependencies:
 
 Written by Xinjue Zou, xinjue.zou@outlook.com
 
-GNU General Public License, check LICENSE for more information.
+Apache License Version 2.0, check LICENSE for more information.
 All text above must be included in any redistribution.
 
 Changelog:
@@ -21,6 +21,9 @@ Changelog:
 #include <ros/ros.h>
 
 #include <memory>
+#include <mutex>
+#include <thread>
+#include <condition_variable>
 
 namespace whi_ur_robot_driver_bridge
 {
@@ -33,6 +36,9 @@ namespace whi_ur_robot_driver_bridge
     protected:
         void init();
         void beStandby();
+        void threadSafty();
+        bool requestLoadProgram();
+        bool requestPlay();
 
     protected:
         std::shared_ptr<ros::NodeHandle> node_handle_{ nullptr };
@@ -40,5 +46,11 @@ namespace whi_ur_robot_driver_bridge
         int try_duration_{ 2 }; // second
         int try_max_count_{ 10 };
         std::string external_program_{ "external_ctrl.urp" };
+        std::mutex mtx_;
+	    std::thread th_safty_;
+        std::condition_variable cv_;
+        bool standby_{ false };
+        std::atomic_bool terminated_{ false };
+        int safty_query_duration_{ 0 };
 	};
 } // namespace whi_ur_robot_driver_bridge
