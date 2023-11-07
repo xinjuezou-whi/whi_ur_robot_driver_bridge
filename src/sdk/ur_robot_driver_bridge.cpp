@@ -313,6 +313,8 @@ namespace whi_ur_robot_driver_bridge
                         ROS_ERROR_STREAM("failed to call service " << service);
                     }
 
+                    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
                     // replay
                     requestPlay();
                 }
