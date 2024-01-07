@@ -28,3 +28,5 @@ It is recommended to extract the calibration params first, then feed it to ur_ro
 ```
 roslaunch whi_ur_robot_driver_bridge whi_ur_robot_driver_bridge.launch kinematics_config:=${HOME}/ur10e_calibration.yaml arm_model:=ur10e robot_ip:=192.168.56.100 script_sender_port:=29999
 ```
+
+> NOTE: replace ur10e with specific UR model: ur3, ur5, ur10, ur3e, ur5e, ur10e, ur16e, ur20
