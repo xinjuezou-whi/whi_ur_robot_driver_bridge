@@ -51,6 +51,11 @@ namespace whi_ur_robot_driver_bridge
     void UrRobotDriverBridge::init()
     {
         // params
+        if (node_handle_->param("robot_name", service_prefix_, std::string("")))
+        {
+            service_prefix_.insert(0, "/");
+            service_prefix_ += "/ur_hardware_interface/dashboard/";
+        }
         node_handle_->param("try_duration", try_duration_, 2);
         node_handle_->param("try_max_count", try_max_count_, 10);
         node_handle_->param("external_program", external_program_, std::string("external_ctrl.urp"));
@@ -84,7 +89,7 @@ namespace whi_ur_robot_driver_bridge
 
                 /// query the robot state
                 // service get_robot_mode
-                std::string service("/ur_hardware_interface/dashboard/get_robot_mode");
+                std::string service(service_prefix_ + "get_robot_mode");
                 auto clientRobotMode = std::make_unique<ros::ServiceClient>(
                     node_handle_->serviceClient<ur_dashboard_msgs::GetRobotMode>(service));
                 ur_dashboard_msgs::GetRobotMode srvRobotMode;
@@ -113,7 +118,7 @@ namespace whi_ur_robot_driver_bridge
                     case ur_dashboard_msgs::RobotMode::POWER_OFF:
                         {
                             // service power_on
-                            service = "/ur_hardware_interface/dashboard/power_on";
+                            service = service_prefix_ + "power_on";
                             auto clientPowerOn = std::make_unique<ros::ServiceClient>(
                                 node_handle_->serviceClient<std_srvs::Trigger>(service));
                             std_srvs::Trigger srv;
@@ -131,7 +136,7 @@ namespace whi_ur_robot_driver_bridge
                             static int tryCount = 0;
                             if (!responseSucceed)
                             {
-                                service = "/ur_hardware_interface/dashboard/brake_release";
+                                service = service_prefix_ + "brake_release";
                                 auto clientBrakeRelease = std::make_unique<ros::ServiceClient>(
                                     node_handle_->serviceClient<std_srvs::Trigger>(service));
                                 std_srvs::Trigger srv;
@@ -154,7 +159,7 @@ namespace whi_ur_robot_driver_bridge
                         break;
                     case ur_dashboard_msgs::RobotMode::RUNNING:
                         // service power_off
-                        service = "/ur_hardware_interface/dashboard/power_off";
+                        service = service_prefix_ + "power_off";
                         client_power_off_ = std::make_unique<ros::ServiceClient>(
                             node_handle_->serviceClient<std_srvs::Trigger>(service));
                         proceed = false;
@@ -185,7 +190,7 @@ namespace whi_ur_robot_driver_bridge
         bool res = false;
 
         // service load_program
-        std::string service("/ur_hardware_interface/dashboard/load_program");
+        std::string service(service_prefix_ + "load_program");
         auto clientLoadProgram = std::make_unique<ros::ServiceClient>(
             node_handle_->serviceClient<ur_dashboard_msgs::Load>(service));
         ur_dashboard_msgs::Load srvLoadProgram;
@@ -216,7 +221,7 @@ namespace whi_ur_robot_driver_bridge
         bool res = false;
 
         // service play
-        std::string service("/ur_hardware_interface/dashboard/play");
+        std::string service(service_prefix_ + "play");
         auto clientPlay = std::make_unique<ros::ServiceClient>(
             node_handle_->serviceClient<std_srvs::Trigger>(service));
         std_srvs::Trigger srv;
@@ -251,7 +256,7 @@ namespace whi_ur_robot_driver_bridge
 	    {
             /// query the safty state
             // service get_safty_mode
-            std::string service("/ur_hardware_interface/dashboard/get_safety_mode");
+            std::string service(service_prefix_ + "get_safety_mode");
             auto clientSafetyMode = std::make_unique<ros::ServiceClient>(
                 node_handle_->serviceClient<ur_dashboard_msgs::GetSafetyMode>(service));
             ur_dashboard_msgs::GetSafetyMode srvSafetyMode;
@@ -265,7 +270,7 @@ namespace whi_ur_robot_driver_bridge
                 pub_motion_state_->publish(msg);
 
                 // unlock protective
-                service = "/ur_hardware_interface/dashboard/unlock_protective_stop";
+                service = service_prefix_ + "unlock_protective_stop";
                 auto clientUnlockProtective = std::make_unique<ros::ServiceClient>(
                     node_handle_->serviceClient<std_srvs::Trigger>(service));
                 std_srvs::Trigger srv;
@@ -293,7 +298,7 @@ namespace whi_ur_robot_driver_bridge
                     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
                     // service close popup
-                    std::string service("/ur_hardware_interface/dashboard/close_popup");
+                    std::string service(service_prefix_ + "close_popup");
                     auto clientClose = std::make_unique<ros::ServiceClient>(
                         node_handle_->serviceClient<std_srvs::Trigger>(service));
                     std_srvs::Trigger srv;

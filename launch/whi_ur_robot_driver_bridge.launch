@@ -1,6 +1,7 @@
 <?xml version="1.0"?>
 <launch>
   <!-- argument -->
+  <arg name="robot_name" default=""/>
   <arg name="arm_model" default="ur10e"/>
   <arg name="vehicle" default=""/>
   <arg name="vehicle_model" default=""/>
@@ -10,27 +11,61 @@
   <arg name="kinematics_config" default="$(find ur_description)/config/$(arg arm_model)/default_kinematics.yaml"
     doc="Kinematics config file used for calibration correction. This will be used to verify the robot's calibration is matching the robot_description."/>
   
-  <!-- ur_robot_driver -->
-  <group if="$(eval arg('vehicle') == '')">
-    <include file="$(find ur_robot_driver)/launch/$(arg arm_model)_bringup.launch" >
-      <arg name="robot_ip" value="$(arg robot_ip)"/>
-      <arg name="script_sender_port" value="$(arg script_sender_port)"/>
-      <arg name="kinematics_config" default="$(arg kinematics_config)"/>
-    </include>
+  <group ns="$(arg robot_name)" unless="$(eval arg('robot_name') == '')">
+    <!-- ur_robot_driver -->
+    <group if="$(eval arg('vehicle') == '')">
+      <include file="$(find ur_robot_driver)/launch/$(arg arm_model)_bringup.launch" >
+        <arg name="robot_ip" value="$(arg robot_ip)"/>
+        <arg name="script_sender_port" value="$(arg script_sender_port)"/>
+        <arg name="kinematics_config" default="$(arg kinematics_config)"/>
+      </include>
+    </group>
+    <group unless="$(eval arg('vehicle') == '')">
+      <include file="$(find ur_robot_driver)/launch/$(arg arm_model)_combined_bringup.launch" >
+        <arg name="robot_name" value="$(arg robot_name)"/>
+        <arg name="vehicle" value="$(arg vehicle)"/>
+        <arg name="vehicle_model" value="$(arg vehicle_model)"/>
+        <arg name="robot_ip" value="$(arg robot_ip)"/>
+        <arg name="script_sender_port" value="$(arg script_sender_port)"/>
+        <arg name="kinematics_config" default="$(arg kinematics_config)"/>
+      </include>
+    </group>
+
+    <!-- params -->
+    <rosparam file="$(find whi_ur_robot_driver_bridge)/config/config.yaml" command="load" subst_value="true"/>
+
+    <!-- hardware interface -->
+    <node name="whi_ur_robot_driver_bridge" pkg="whi_ur_robot_driver_bridge" type="whi_ur_robot_driver_bridge_node" output="screen">
+      <param name="robot_name" type="string" value="$(arg robot_name)"/>
+    </node>
   </group>
-  <group unless="$(eval arg('vehicle') == '')">
-    <include file="$(find ur_robot_driver)/launch/$(arg arm_model)_combined_bringup.launch" >
-      <arg name="vehicle" value="$(arg vehicle)"/>
-      <arg name="vehicle_model" value="$(arg vehicle_model)"/>
-      <arg name="robot_ip" value="$(arg robot_ip)"/>
-      <arg name="script_sender_port" value="$(arg script_sender_port)"/>
-      <arg name="kinematics_config" default="$(arg kinematics_config)"/>
-    </include>
+  <group if="$(eval arg('robot_name') == '')">
+    <!-- ur_robot_driver -->
+    <group if="$(eval arg('vehicle') == '')">
+      <include file="$(find ur_robot_driver)/launch/$(arg arm_model)_bringup.launch" >
+        <arg name="robot_ip" value="$(arg robot_ip)"/>
+        <arg name="script_sender_port" value="$(arg script_sender_port)"/>
+        <arg name="kinematics_config" default="$(arg kinematics_config)"/>
+      </include>
+    </group>
+    <group unless="$(eval arg('vehicle') == '')">
+      <include file="$(find ur_robot_driver)/launch/$(arg arm_model)_combined_bringup.launch" >
+        <arg name="robot_name" value="$(arg robot_name)"/>
+        <arg name="vehicle" value="$(arg vehicle)"/>
+        <arg name="vehicle_model" value="$(arg vehicle_model)"/>
+        <arg name="robot_ip" value="$(arg robot_ip)"/>
+        <arg name="script_sender_port" value="$(arg script_sender_port)"/>
+        <arg name="kinematics_config" default="$(arg kinematics_config)"/>
+      </include>
+    </group>
+
+    <!-- params -->
+    <rosparam file="$(find whi_ur_robot_driver_bridge)/config/config.yaml" command="load" subst_value="true"/>
+
+    <!-- hardware interface -->
+    <node name="whi_ur_robot_driver_bridge" pkg="whi_ur_robot_driver_bridge" type="whi_ur_robot_driver_bridge_node" output="screen">
+      <param name="robot_name" type="string" value="$(arg robot_name)"/>
+    </node>
   </group>
 
-  <!-- params -->
-  <rosparam file="$(find whi_ur_robot_driver_bridge)/config/config.yaml" command="load" subst_value="true"/>
-
-  <!-- hardware interface -->
-  <node name="whi_ur_robot_driver_bridge" pkg="whi_ur_robot_driver_bridge" type="whi_ur_robot_driver_bridge_node" output="screen"/>
 </launch>

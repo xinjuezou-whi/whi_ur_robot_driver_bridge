@@ -53,5 +53,6 @@ namespace whi_ur_robot_driver_bridge
         std::atomic_bool terminated_{ false };
         int safty_query_duration_{ 0 };
         std::unique_ptr<ros::Publisher> pub_motion_state_{ nullptr };
+        std::string service_prefix_;
 	};
 } // namespace whi_ur_robot_driver_bridge
