@@ -21,6 +21,7 @@ All text above must be included in any redistribution.
 #include <ur_dashboard_msgs/GetProgramState.h>
 #include <ur_dashboard_msgs/GetSafetyMode.h>
 #include <ur_dashboard_msgs/Load.h>
+#include <ur_msgs/SetIO.h>
 #include <std_srvs/Trigger.h>
 
 #include <thread>
@@ -51,10 +52,11 @@ namespace whi_ur_robot_driver_bridge
     void UrRobotDriverBridge::init()
     {
         // params
-        if (node_handle_->param("robot_name", service_prefix_, std::string("")))
+        std::string robotName;
+        node_handle_->param("robot_name", robotName, std::string(""));
+        if (!robotName.empty())
         {
-            service_prefix_.insert(0, "/");
-            service_prefix_ += "/ur_hardware_interface/dashboard/";
+            service_prefix_ = "/" + robotName + service_prefix_;
         }
         node_handle_->param("try_duration", try_duration_, 2);
         node_handle_->param("try_max_count", try_max_count_, 10);
@@ -67,6 +69,7 @@ namespace whi_ur_robot_driver_bridge
         }
 
         beStandby();
+
         if (safty_query_duration_ > 0)
         {
             // create state publisher
@@ -77,6 +80,10 @@ namespace whi_ur_robot_driver_bridge
             // spawn the safty monitor thread
 		    th_safty_ = std::thread(std::bind(&UrRobotDriverBridge::threadSafty, this));
         }
+
+        // advertise io service with fixed name
+		server_io_ = std::make_unique<ros::ServiceServer>(
+            node_handle_->advertiseService("io_request", &UrRobotDriverBridge::onServiceIo, this));
     }
 
     void UrRobotDriverBridge::beStandby()
@@ -185,66 +192,6 @@ namespace whi_ur_robot_driver_bridge
         }.detach();
     }
 
-    bool UrRobotDriverBridge::requestLoadProgram()
-    {
-        bool res = false;
-
-        // service load_program
-        std::string service(service_prefix_ + "load_program");
-        auto clientLoadProgram = std::make_unique<ros::ServiceClient>(
-            node_handle_->serviceClient<ur_dashboard_msgs::Load>(service));
-        ur_dashboard_msgs::Load srvLoadProgram;
-        srvLoadProgram.request.filename = external_program_;
-        if (clientLoadProgram->call(srvLoadProgram))
-        {
-            if (srvLoadProgram.response.success)
-            {
-                res = true;
-                ROS_INFO_STREAM("program " << srvLoadProgram.request.filename << " is loaded successfully");
-            }
-            else
-            {
-                ROS_ERROR_STREAM("failed to execute service " << service << " to load program file "
-                    << srvLoadProgram.request.filename);
-            }
-        }
-        else
-        {
-            ROS_ERROR_STREAM("failed to call service " << service);
-        }
-
-        return res;
-    }
-
-    bool UrRobotDriverBridge::requestPlay()
-    {
-        bool res = false;
-
-        // service play
-        std::string service(service_prefix_ + "play");
-        auto clientPlay = std::make_unique<ros::ServiceClient>(
-            node_handle_->serviceClient<std_srvs::Trigger>(service));
-        std_srvs::Trigger srv;
-        if (clientPlay->call(srv))
-        {
-            if (srv.response.success)
-            {
-                res = true;
-                ROS_INFO_STREAM("UR is standby");
-            }
-            else
-            {
-                ROS_ERROR_STREAM("failed to execute service " << service);
-            }
-        }
-        else
-        {
-            ROS_ERROR_STREAM("failed to call service " << service);
-        }
-
-        return res;
-    }
-
     void UrRobotDriverBridge::threadSafty()
     {
         {
@@ -327,5 +274,106 @@ namespace whi_ur_robot_driver_bridge
 
             std::this_thread::sleep_for(std::chrono::milliseconds(safty_query_duration_));
         }
+    }
+
+    bool UrRobotDriverBridge::requestLoadProgram()
+    {
+        bool res = false;
+
+        // service load_program
+        std::string service(service_prefix_ + "load_program");
+        auto clientLoadProgram = std::make_unique<ros::ServiceClient>(
+            node_handle_->serviceClient<ur_dashboard_msgs::Load>(service));
+        ur_dashboard_msgs::Load srvLoadProgram;
+        srvLoadProgram.request.filename = external_program_;
+        if (clientLoadProgram->call(srvLoadProgram))
+        {
+            if (srvLoadProgram.response.success)
+            {
+                res = true;
+                ROS_INFO_STREAM("program " << srvLoadProgram.request.filename << " is loaded successfully");
+            }
+            else
+            {
+                ROS_ERROR_STREAM("failed to execute service " << service << " to load program file "
+                    << srvLoadProgram.request.filename);
+            }
+        }
+        else
+        {
+            ROS_ERROR_STREAM("failed to call service " << service);
+        }
+
+        return res;
+    }
+
+    bool UrRobotDriverBridge::requestPlay()
+    {
+        bool res = false;
+
+        // service play
+        std::string service(service_prefix_ + "play");
+        auto clientPlay = std::make_unique<ros::ServiceClient>(
+            node_handle_->serviceClient<std_srvs::Trigger>(service));
+        std_srvs::Trigger srv;
+        if (clientPlay->call(srv))
+        {
+            if (srv.response.success)
+            {
+                res = true;
+                ROS_INFO_STREAM("UR is standby");
+            }
+            else
+            {
+                ROS_ERROR_STREAM("failed to execute service " << service);
+            }
+        }
+        else
+        {
+            ROS_ERROR_STREAM("failed to call service " << service);
+        }
+
+        return res;
+    }
+
+    bool UrRobotDriverBridge::onServiceIo(whi_interfaces::WhiSrvIo::Request& Request,
+        whi_interfaces::WhiSrvIo::Response& Response)
+    {
+        // service SetIO
+        if (Request.operation == whi_interfaces::WhiSrvIo::Request::OPER_WRITE)
+        {
+            std::string service("/SetIO");
+            std::string robotName;
+            node_handle_->param("robot_name", robotName, std::string(""));
+            if (!robotName.empty())
+            {
+                service = "/" + robotName + service;
+            }
+            auto client = std::make_unique<ros::ServiceClient>(
+                node_handle_->serviceClient<ur_msgs::SetIO>(service));
+            ur_msgs::SetIO srv;
+            srv.request.fun = ur_msgs::SetIO::Request::FUN_SET_DIGITAL_OUT;
+            srv.request.pin = Request.addr;
+            srv.request.state = Request.level;
+            if (client->call(srv))
+            {
+                Response.result = srv.response.success;
+                if (!Response.result)
+                {
+                    ROS_ERROR_STREAM("failed to execute service " << service);
+                }
+            }
+            else
+            {
+                ROS_ERROR_STREAM("failed to call service " << service);
+            }            
+        }
+        else
+        {
+            Response.result = false;
+            ROS_ERROR_STREAM("only write operation is supported in UR");
+        }
+
+        return Response.result;
     }
 } // namespace whi_ur_robot_driver_bridge

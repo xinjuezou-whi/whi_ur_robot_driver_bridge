@@ -18,6 +18,7 @@ Changelog:
 2022-xx-xx: xxx
 ******************************************************************/
 #pragma once
+#include "whi_interfaces/WhiSrvIo.h"
 #include <ros/ros.h>
 
 #include <memory>
@@ -39,6 +40,7 @@ namespace whi_ur_robot_driver_bridge
         void threadSafty();
         bool requestLoadProgram();
         bool requestPlay();
+        bool onServiceIo(whi_interfaces::WhiSrvIo::Request& Request, whi_interfaces::WhiSrvIo::Response& Response);
 
     protected:
         std::shared_ptr<ros::NodeHandle> node_handle_{ nullptr };
@@ -53,6 +55,8 @@ namespace whi_ur_robot_driver_bridge
         std::atomic_bool terminated_{ false };
         int safty_query_duration_{ 0 };
         std::unique_ptr<ros::Publisher> pub_motion_state_{ nullptr };
-        std::string service_prefix_;
+        std::string service_prefix_{ "/ur_hardware_interface/dashboard/" };
+
+        std::unique_ptr<ros::ServiceServer> server_io_{ nullptr };
 	};
 } // namespace whi_ur_robot_driver_bridge
