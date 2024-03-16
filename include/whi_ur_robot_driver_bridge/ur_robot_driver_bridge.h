@@ -55,8 +55,8 @@ namespace whi_ur_robot_driver_bridge
         std::atomic_bool terminated_{ false };
         int safty_query_duration_{ 0 };
         std::unique_ptr<ros::Publisher> pub_motion_state_{ nullptr };
-        std::string service_prefix_{ "/ur_hardware_interface/dashboard/" };
-
+        std::string service_prefix_{ "/ur_hardware_interface/" };
+        std::string prefix_dashboard_{ "dashboard/" };
         std::unique_ptr<ros::ServiceServer> server_io_{ nullptr };
 	};
 } // namespace whi_ur_robot_driver_bridge

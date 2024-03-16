@@ -96,7 +96,7 @@ namespace whi_ur_robot_driver_bridge
 
                 /// query the robot state
                 // service get_robot_mode
-                std::string service(service_prefix_ + "get_robot_mode");
+                std::string service(service_prefix_ + prefix_dashboard_ + "get_robot_mode");
                 auto clientRobotMode = std::make_unique<ros::ServiceClient>(
                     node_handle_->serviceClient<ur_dashboard_msgs::GetRobotMode>(service));
                 ur_dashboard_msgs::GetRobotMode srvRobotMode;
@@ -125,7 +125,7 @@ namespace whi_ur_robot_driver_bridge
                     case ur_dashboard_msgs::RobotMode::POWER_OFF:
                         {
                             // service power_on
-                            service = service_prefix_ + "power_on";
+                            service = service_prefix_ + prefix_dashboard_ + "power_on";
                             auto clientPowerOn = std::make_unique<ros::ServiceClient>(
                                 node_handle_->serviceClient<std_srvs::Trigger>(service));
                             std_srvs::Trigger srv;
@@ -143,7 +143,7 @@ namespace whi_ur_robot_driver_bridge
                             static int tryCount = 0;
                             if (!responseSucceed)
                             {
-                                service = service_prefix_ + "brake_release";
+                                service = service_prefix_ + prefix_dashboard_ + "brake_release";
                                 auto clientBrakeRelease = std::make_unique<ros::ServiceClient>(
                                     node_handle_->serviceClient<std_srvs::Trigger>(service));
                                 std_srvs::Trigger srv;
@@ -166,7 +166,7 @@ namespace whi_ur_robot_driver_bridge
                         break;
                     case ur_dashboard_msgs::RobotMode::RUNNING:
                         // service power_off
-                        service = service_prefix_ + "power_off";
+                        service = service_prefix_ + prefix_dashboard_ + "power_off";
                         client_power_off_ = std::make_unique<ros::ServiceClient>(
                             node_handle_->serviceClient<std_srvs::Trigger>(service));
                         proceed = false;
@@ -203,7 +203,7 @@ namespace whi_ur_robot_driver_bridge
 	    {
             /// query the safty state
             // service get_safty_mode
-            std::string service(service_prefix_ + "get_safety_mode");
+            std::string service(service_prefix_ + prefix_dashboard_ + "get_safety_mode");
             auto clientSafetyMode = std::make_unique<ros::ServiceClient>(
                 node_handle_->serviceClient<ur_dashboard_msgs::GetSafetyMode>(service));
             ur_dashboard_msgs::GetSafetyMode srvSafetyMode;
@@ -217,7 +217,7 @@ namespace whi_ur_robot_driver_bridge
                 pub_motion_state_->publish(msg);
 
                 // unlock protective
-                service = service_prefix_ + "unlock_protective_stop";
+                service = service_prefix_ + prefix_dashboard_ + "unlock_protective_stop";
                 auto clientUnlockProtective = std::make_unique<ros::ServiceClient>(
                     node_handle_->serviceClient<std_srvs::Trigger>(service));
                 std_srvs::Trigger srv;
@@ -245,7 +245,7 @@ namespace whi_ur_robot_driver_bridge
                     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
                     // service close popup
-                    std::string service(service_prefix_ + "close_popup");
+                    std::string service(service_prefix_ + prefix_dashboard_ + "close_popup");
                     auto clientClose = std::make_unique<ros::ServiceClient>(
                         node_handle_->serviceClient<std_srvs::Trigger>(service));
                     std_srvs::Trigger srv;
@@ -281,7 +281,7 @@ namespace whi_ur_robot_driver_bridge
         bool res = false;
 
         // service load_program
-        std::string service(service_prefix_ + "load_program");
+        std::string service(service_prefix_ + prefix_dashboard_ + "load_program");
         auto clientLoadProgram = std::make_unique<ros::ServiceClient>(
             node_handle_->serviceClient<ur_dashboard_msgs::Load>(service));
         ur_dashboard_msgs::Load srvLoadProgram;
@@ -312,7 +312,7 @@ namespace whi_ur_robot_driver_bridge
         bool res = false;
 
         // service play
-        std::string service(service_prefix_ + "play");
+        std::string service(service_prefix_ + prefix_dashboard_ + "play");
         auto clientPlay = std::make_unique<ros::ServiceClient>(
             node_handle_->serviceClient<std_srvs::Trigger>(service));
         std_srvs::Trigger srv;
@@ -342,13 +342,7 @@ namespace whi_ur_robot_driver_bridge
         // service SetIO
         if (Request.operation == whi_interfaces::WhiSrvIo::Request::OPER_WRITE)
         {
-            std::string service("/SetIO");
-            std::string robotName;
-            node_handle_->param("robot_name", robotName, std::string(""));
-            if (!robotName.empty())
-            {
-                service = "/" + robotName + service;
-            }
+            std::string service(service_prefix_ + "set_io");
             auto client = std::make_unique<ros::ServiceClient>(
                 node_handle_->serviceClient<ur_msgs::SetIO>(service));
             ur_msgs::SetIO srv;
