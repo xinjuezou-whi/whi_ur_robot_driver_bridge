@@ -118,9 +118,6 @@ namespace whi_ur_robot_driver_bridge
                     }
                 }
 
-                /// close popups
-                closePopups();
-
                 /// handle power on process
                 while (proceed && clientRobotMode->call(srvRobotMode))
                 {
@@ -183,12 +180,21 @@ namespace whi_ur_robot_driver_bridge
                 }
 
                 /// load urp program and play
-                if (requestLoadProgram())
+                bool good2Play = true;
+                if (isProtective())
                 {
-                    if (requestPlay())
+                    good2Play = recoverFromProtective();
+                }
+
+                /// close popups
+                closePopups();
+               
+                if (good2Play)
+                {
+                    if (requestLoadProgram() && requestPlay())
                     {
                         std::lock_guard<std::mutex> lock(mtx_);
-			            standby_ = true;
+                        standby_ = true;
                         cv_.notify_all();
                     }
                 }
@@ -206,43 +212,8 @@ namespace whi_ur_robot_driver_bridge
         while (!terminated_.load())
 	    {
             /// query the safty state
-            // service get_safty_mode
-            std::string service(service_prefix_ + prefix_dashboard_ + "get_safety_mode");
-            auto clientSafetyMode = std::make_unique<ros::ServiceClient>(
-                node_handle_ns_free_->serviceClient<ur_dashboard_msgs::GetSafetyMode>(service));
-            ur_dashboard_msgs::GetSafetyMode srvSafetyMode;
-            clientSafetyMode->call(srvSafetyMode);
-            if (srvSafetyMode.response.safety_mode.mode == ur_dashboard_msgs::SafetyMode::PROTECTIVE_STOP)
+            if (isProtective() && recoverFromProtective())
             {
-                ROS_WARN_STREAM("UR entered protective stop state");
-
-                whi_interfaces::WhiMotionState msg;
-                msg.state = whi_interfaces::WhiMotionState::STA_FAULT;
-                pub_motion_state_->publish(msg);
-
-                // unlock protective
-                service = service_prefix_ + prefix_dashboard_ + "unlock_protective_stop";
-                auto clientUnlockProtective = std::make_unique<ros::ServiceClient>(
-                    node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
-                std_srvs::Trigger srv;
-                if (!clientUnlockProtective->call(srv))
-                {
-                    ROS_ERROR_STREAM("failed to call service " << service);
-                }
-                else
-                {
-                    if (srv.response.success)
-                    {
-                        ROS_INFO_STREAM("UR is recovered from protective state");
-                    }
-                    else
-                    {
-                        ROS_ERROR_STREAM("failed to execute service " << service);
-                    }
-                }
-
-                std::this_thread::sleep_for(std::chrono::milliseconds(300));
-
                 // reload program
                 if (requestLoadProgram())
                 {
@@ -371,6 +342,57 @@ namespace whi_ur_robot_driver_bridge
             ROS_ERROR_STREAM("failed to call service " << service);
         }
 
+        return res;
+    }
+
+    bool UrRobotDriverBridge::isProtective()
+    {
+        // service get_safty_mode
+        std::string service(service_prefix_ + prefix_dashboard_ + "get_safety_mode");
+        auto clientSafetyMode = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<ur_dashboard_msgs::GetSafetyMode>(service));
+        ur_dashboard_msgs::GetSafetyMode srvSafetyMode;
+        clientSafetyMode->call(srvSafetyMode);
+        if (srvSafetyMode.response.safety_mode.mode == ur_dashboard_msgs::SafetyMode::PROTECTIVE_STOP)
+        {
+            ROS_WARN_STREAM("UR entered protective stop state");
+            return true;
+        }
+
+        return false;
+    }
+
+    bool UrRobotDriverBridge::recoverFromProtective()
+    {
+        bool res = false;
+
+        // unlock protective
+        std::string service(service_prefix_ + prefix_dashboard_ + "unlock_protective_stop");
+        auto clientUnlockProtective = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+        std_srvs::Trigger srv;
+        if (!clientUnlockProtective->call(srv))
+        {
+            ROS_ERROR_STREAM("failed to call service " << service);
+        }
+        else
+        {
+            if (srv.response.success)
+            {
+                res = true;
+                ROS_INFO_STREAM("UR is recovered from protective state");
+            }
+            else
+            {
+                ROS_ERROR_STREAM("failed to execute service " << service);
+            }
+        }
+
+        if (res)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        }
+        
         return res;
     }
 
