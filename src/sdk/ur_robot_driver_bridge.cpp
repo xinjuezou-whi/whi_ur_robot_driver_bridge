@@ -355,6 +355,10 @@ namespace whi_ur_robot_driver_bridge
         clientSafetyMode->call(srvSafetyMode);
         if (srvSafetyMode.response.safety_mode.mode == ur_dashboard_msgs::SafetyMode::PROTECTIVE_STOP)
         {
+            whi_interfaces::WhiMotionState msg;
+            msg.state = whi_interfaces::WhiMotionState::STA_FAULT;
+            pub_motion_state_->publish(msg);
+
             ROS_WARN_STREAM("UR entered protective stop state");
             return true;
         }
@@ -379,7 +383,11 @@ namespace whi_ur_robot_driver_bridge
         {
             if (srv.response.success)
             {
+                whi_interfaces::WhiMotionState msg;
+                msg.state = whi_interfaces::WhiMotionState::STA_STANDBY;
+                pub_motion_state_->publish(msg);
                 res = true;
+
                 ROS_INFO_STREAM("UR is recovered from protective state");
             }
             else
