@@ -41,6 +41,7 @@ namespace whi_ur_robot_driver_bridge
         void threadSafty();
         bool requestLoadProgram();
         bool requestPlay();
+        bool closePopups();
         bool onServiceIo(whi_interfaces::WhiSrvIo::Request& Request, whi_interfaces::WhiSrvIo::Response& Response);
         bool onServiceReady(std_srvs::Trigger::Request& Request, std_srvs::Trigger::Response& Response);
 

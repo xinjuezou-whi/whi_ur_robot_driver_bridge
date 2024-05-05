@@ -118,6 +118,9 @@ namespace whi_ur_robot_driver_bridge
                     }
                 }
 
+                /// close popups
+                closePopups();
+
                 /// handle power on process
                 while (proceed && clientRobotMode->call(srvRobotMode))
                 {
@@ -245,26 +248,8 @@ namespace whi_ur_robot_driver_bridge
                 {
                     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-                    // service close popup
-                    std::string service(service_prefix_ + prefix_dashboard_ + "close_popup");
-                    auto clientClose = std::make_unique<ros::ServiceClient>(
-                        node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
-                    std_srvs::Trigger srv;
-                    if (clientClose->call(srv))
-                    {
-                        if (srv.response.success)
-                        {
-                            ROS_INFO_STREAM("safety popup is closed successfully");
-                        }
-                        else
-                        {
-                            ROS_ERROR_STREAM("failed to execute service " << service);
-                        }
-                    }
-                    else
-                    {
-                        ROS_ERROR_STREAM("failed to call service " << service);
-                    }
+                    // close popups
+                    closePopups();
 
                     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
@@ -331,6 +316,58 @@ namespace whi_ur_robot_driver_bridge
         }
         else
         {
+            ROS_ERROR_STREAM("failed to call service " << service);
+        }
+
+        return res;
+    }
+
+    bool UrRobotDriverBridge::closePopups()
+    {
+        bool res = true;
+
+        // non-safty
+        std::string service(service_prefix_ + prefix_dashboard_ + "close_popup");
+        auto clientNonSafty = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+        std_srvs::Trigger srv;
+        if (clientNonSafty->call(srv))
+        {
+            if (srv.response.success)
+            {
+                ROS_INFO_STREAM("non safety popup is closed successfully");
+            }
+            else
+            {
+                res &= false;
+                ROS_ERROR_STREAM("failed to execute service " << service);
+            }
+        }
+        else
+        {
+            res &= false;
+            ROS_ERROR_STREAM("failed to call service " << service);
+        }
+
+        // safty
+        service.assign(service_prefix_ + prefix_dashboard_ + "close_safety_popup");
+        auto clientSafty = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+        if (clientSafty->call(srv))
+        {
+            if (srv.response.success)
+            {
+                ROS_INFO_STREAM("safety popup is closed successfully");
+            }
+            else
+            {
+                res &= false;
+                ROS_ERROR_STREAM("failed to execute service " << service);
+            }
+        }
+        else
+        {
+            res &= false;
             ROS_ERROR_STREAM("failed to call service " << service);
         }
 
