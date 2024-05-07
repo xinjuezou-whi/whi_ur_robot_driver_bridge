@@ -99,9 +99,19 @@ namespace whi_ur_robot_driver_bridge
         {
             [this]() -> void
             {
+                // reconnect
+                std::string service(service_prefix_ + prefix_dashboard_ + "connect");
+                auto clientConnect = std::make_unique<ros::ServiceClient>(
+                    node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+                std_srvs::Trigger srv;
+                if (!clientConnect->call(srv))
+                {
+                    ROS_ERROR_STREAM("failed to call service " << service);
+                }
+
                 /// query the robot state
                 // service get_robot_mode
-                std::string service(service_prefix_ + prefix_dashboard_ + "get_robot_mode");
+                service = service_prefix_ + prefix_dashboard_ + "get_robot_mode";
                 auto clientRobotMode = std::make_unique<ros::ServiceClient>(
                     node_handle_ns_free_->serviceClient<ur_dashboard_msgs::GetRobotMode>(service));
                 ur_dashboard_msgs::GetRobotMode srvRobotMode;
