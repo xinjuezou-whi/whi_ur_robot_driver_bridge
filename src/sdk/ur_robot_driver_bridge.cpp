@@ -22,6 +22,7 @@ All text above must be included in any redistribution.
 #include <ur_dashboard_msgs/GetSafetyMode.h>
 #include <ur_dashboard_msgs/GetLoadedProgram.h>
 #include <ur_dashboard_msgs/Load.h>
+#include <ur_dashboard_msgs/IsProgramRunning.h>
 #include <ur_msgs/SetIO.h>
 #include <std_srvs/Trigger.h>
 
@@ -42,11 +43,7 @@ namespace whi_ur_robot_driver_bridge
             std_srvs::Trigger srv;
             client_power_off_->call(srv);
         }
-        std::string service(service_prefix_ + prefix_dashboard_ + "quit");
-        auto clientQuit = std::make_unique<ros::ServiceClient>(
-            node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
-        std_srvs::Trigger srv;
-        clientQuit->call(srv);
+        disconnect();
 
         terminated_.store(true);
 	    if (th_safty_.joinable())
@@ -99,19 +96,9 @@ namespace whi_ur_robot_driver_bridge
         {
             [this]() -> void
             {
-                // reconnect
-                std::string service(service_prefix_ + prefix_dashboard_ + "connect");
-                auto clientConnect = std::make_unique<ros::ServiceClient>(
-                    node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
-                std_srvs::Trigger srv;
-                if (!clientConnect->call(srv))
-                {
-                    ROS_ERROR_STREAM("failed to call service " << service);
-                }
-
-                /// query the robot state
+                /// query the robot state till arm is started
                 // service get_robot_mode
-                service = service_prefix_ + prefix_dashboard_ + "get_robot_mode";
+                std::string service(service_prefix_ + prefix_dashboard_ + "get_robot_mode");
                 auto clientRobotMode = std::make_unique<ros::ServiceClient>(
                     node_handle_ns_free_->serviceClient<ur_dashboard_msgs::GetRobotMode>(service));
                 ur_dashboard_msgs::GetRobotMode srvRobotMode;
@@ -135,7 +122,6 @@ namespace whi_ur_robot_driver_bridge
                 /// clear state
                 // close popups
                 closePopups();
-
                 // recover from protective
                 bool proceeding = true;
                 if (isProtective())
@@ -153,7 +139,7 @@ namespace whi_ur_robot_driver_bridge
                         case ur_dashboard_msgs::RobotMode::POWER_OFF:
                             {
                                 // service power_on
-                                service = service_prefix_ + prefix_dashboard_ + "power_on";
+                                service.assign(service_prefix_ + prefix_dashboard_ + "power_on");
                                 auto clientPowerOn = std::make_unique<ros::ServiceClient>(
                                     node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
                                 std_srvs::Trigger srv;
@@ -171,7 +157,7 @@ namespace whi_ur_robot_driver_bridge
                                 static int tryCount = 0;
                                 if (!responseSucceed)
                                 {
-                                    service = service_prefix_ + prefix_dashboard_ + "brake_release";
+                                    service.assign(service_prefix_ + prefix_dashboard_ + "brake_release");
                                     auto clientBrakeRelease = std::make_unique<ros::ServiceClient>(
                                         node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
                                     std_srvs::Trigger srv;
@@ -194,7 +180,7 @@ namespace whi_ur_robot_driver_bridge
                             break;
                         case ur_dashboard_msgs::RobotMode::RUNNING:
                             // service power_off
-                            service = service_prefix_ + prefix_dashboard_ + "power_off";
+                            service.assign(service_prefix_ + prefix_dashboard_ + "power_off");
                             client_power_off_ = std::make_unique<ros::ServiceClient>(
                                 node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
                             break;
@@ -206,8 +192,15 @@ namespace whi_ur_robot_driver_bridge
                     }
                 }
 
-                if (proceeding && requestLoadProgram() && requestPlay())
+                if (proceeding && requestLoadProgram())
                 {
+                    requestPlay();
+                    // connection will be refused at startup while there is an autorunning program
+                    // trick is to disconnect and reconnect
+                    disconnect();
+                    reconnect();
+                    closePopups();
+
                     std::lock_guard<std::mutex> lock(mtx_);
                     standby_ = true;
                     cv_.notify_all();
@@ -258,8 +251,31 @@ namespace whi_ur_robot_driver_bridge
     {
         bool res = false;
 
+        // deactive running program first
+        std::string service(service_prefix_ + prefix_dashboard_ + "program_running");
+        auto clientRunning = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<ur_dashboard_msgs::IsProgramRunning>(service));
+        ur_dashboard_msgs::IsProgramRunning srvRunning;
+        if (clientRunning->call(srvRunning))
+        {
+            if (srvRunning.response.program_running)
+            {
+                service.assign(service_prefix_ + prefix_dashboard_ + "stop");
+                auto clientStop = std::make_unique<ros::ServiceClient>(
+                    node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+                std_srvs::Trigger srv;
+                if (clientStop->call(srv))
+                {
+                    if (srv.response.success)
+                    {
+                        ROS_INFO_STREAM("stop running program successfully");
+                    }
+                }
+            }
+        }
+
         // service load_program
-        std::string service(service_prefix_ + prefix_dashboard_ + "load_program");
+        service.assign(service_prefix_ + prefix_dashboard_ + "load_program");
         auto clientLoadProgram = std::make_unique<ros::ServiceClient>(
             node_handle_ns_free_->serviceClient<ur_dashboard_msgs::Load>(service));
         ur_dashboard_msgs::Load srvLoadProgram;
@@ -418,6 +434,62 @@ namespace whi_ur_robot_driver_bridge
             std::this_thread::sleep_for(std::chrono::milliseconds(300));
         }
         
+        return res;
+    }
+
+    bool UrRobotDriverBridge::disconnect()
+    {
+        bool res = false;
+
+        std::string service(service_prefix_ + prefix_dashboard_ + "quit");
+        auto clientQuit = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+        std_srvs::Trigger srv;
+        if (clientQuit->call(srv))
+        {
+            if (srv.response.success)
+            {
+                res = true;
+                ROS_INFO_STREAM("disconnect successfully");
+            }
+            else
+            {
+                ROS_ERROR_STREAM("failed to disconnect");
+            }
+        }
+        else
+        {
+            ROS_ERROR_STREAM("failed to call service " << service);
+        }
+
+        return res;
+    }
+
+    bool UrRobotDriverBridge::reconnect()
+    {
+        bool res = false;
+
+        std::string service(service_prefix_ + prefix_dashboard_ + "connect");
+        auto clientConnect = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+        std_srvs::Trigger srv;
+        if (clientConnect->call(srv))
+        {
+            if (srv.response.success)
+            {
+                res = true;
+                ROS_INFO_STREAM("reconnect successfully");
+            }
+            else
+            {
+                ROS_ERROR_STREAM("failed to reconnect");
+            }
+        }
+        else
+        {
+            ROS_ERROR_STREAM("failed to call service " << service);
+        }
+
         return res;
     }
 
