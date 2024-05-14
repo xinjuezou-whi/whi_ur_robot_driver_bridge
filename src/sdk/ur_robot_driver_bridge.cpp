@@ -38,11 +38,7 @@ namespace whi_ur_robot_driver_bridge
 
     UrRobotDriverBridge::~UrRobotDriverBridge()
     {
-        if (client_power_off_)
-        {
-            std_srvs::Trigger srv;
-            client_power_off_->call(srv);
-        }
+        powerOff();
         disconnect();
 
         terminated_.store(true);
@@ -60,8 +56,8 @@ namespace whi_ur_robot_driver_bridge
         {
             service_prefix_ = ns + "/" + service_prefix_;
         }
-        node_handle_->param("try_duration", try_duration_, 2);
-        node_handle_->param("try_max_count", try_max_count_, 10);
+        node_handle_->param("try_duration", try_duration_, 10);
+        node_handle_->param("try_max_count", try_max_count_, 20);
         node_handle_->param("external_program", external_program_, std::string("external_ctrl.urp"));
         double frequency = 0.0;
         node_handle_->param("protective_query_frequency", frequency, 0.0);
@@ -130,76 +126,75 @@ namespace whi_ur_robot_driver_bridge
                 }
 
                 /// handle power on process
-                if (proceeding)
+                while (proceeding && clientRobotMode->call(srvRobotMode))
                 {
-                    while (!client_power_off_ && clientRobotMode->call(srvRobotMode))
+                    switch (srvRobotMode.response.robot_mode.mode)
                     {
-                        switch (srvRobotMode.response.robot_mode.mode)
+                    case ur_dashboard_msgs::RobotMode::POWER_OFF:
                         {
-                        case ur_dashboard_msgs::RobotMode::POWER_OFF:
+                            // service power_on
+                            service.assign(service_prefix_ + prefix_dashboard_ + "power_on");
+                            auto clientPowerOn = std::make_unique<ros::ServiceClient>(
+                                node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+                            std_srvs::Trigger srv;
+                            if (!clientPowerOn->call(srv))
                             {
-                                // service power_on
-                                service.assign(service_prefix_ + prefix_dashboard_ + "power_on");
-                                auto clientPowerOn = std::make_unique<ros::ServiceClient>(
+                                proceeding = false;
+                                ROS_ERROR_STREAM("failed to call service " << service);
+                            }
+                        }
+                        break;
+                    case ur_dashboard_msgs::RobotMode::IDLE:
+                        if (getLoadedProgram().find(external_program_) != std::string::npos)
+                        {
+                            // service brake_release
+                            static bool responseSucceed = false;
+                            static int tryCount = 0;
+                            if (!responseSucceed)
+                            {
+                                service.assign(service_prefix_ + prefix_dashboard_ + "brake_release");
+                                auto clientBrakeRelease = std::make_unique<ros::ServiceClient>(
                                     node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
                                 std_srvs::Trigger srv;
-                                if (!clientPowerOn->call(srv))
+                                if (!clientBrakeRelease->call(srv))
                                 {
                                     proceeding = false;
                                     ROS_ERROR_STREAM("failed to call service " << service);
                                 }
-                            }
-                            break;
-                        case ur_dashboard_msgs::RobotMode::IDLE:
-                            {
-                                // service brake_release
-                                static bool responseSucceed = false;
-                                static int tryCount = 0;
-                                if (!responseSucceed)
+                                else
                                 {
-                                    service.assign(service_prefix_ + prefix_dashboard_ + "brake_release");
-                                    auto clientBrakeRelease = std::make_unique<ros::ServiceClient>(
-                                        node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
-                                    std_srvs::Trigger srv;
-                                    if (!clientBrakeRelease->call(srv))
+                                    responseSucceed = srv.response.success;
+                                    if (!responseSucceed && ++tryCount > 5)
                                     {
                                         proceeding = false;
-                                        ROS_ERROR_STREAM("failed to call service " << service);
-                                    }
-                                    else
-                                    {
-                                        responseSucceed = srv.response.success;
-                                        if (!responseSucceed && ++tryCount > 5)
-                                        {
-                                            proceeding = false;
-                                            ROS_ERROR_STREAM("failed to execute service " << service);
-                                        }
+                                        ROS_ERROR_STREAM("failed to execute service " << service);
                                     }
                                 }
                             }
-                            break;
-                        case ur_dashboard_msgs::RobotMode::RUNNING:
-                            // service power_off
-                            service.assign(service_prefix_ + prefix_dashboard_ + "power_off");
-                            client_power_off_ = std::make_unique<ros::ServiceClient>(
-                                node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
-                            break;
-                        default:
-                            break;
                         }
-
-                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                        break;
+                    case ur_dashboard_msgs::RobotMode::RUNNING:
+                        if (getLoadedProgram().find(external_program_) == std::string::npos)
+                        {
+                            deactiveRunningProgram();
+                            requestLoadProgram();
+                            powerOff();
+                        }
+                        else
+                        {
+                            proceeding = false;
+                        }
+                        break;
+                    default:
+                        break;
                     }
+
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 }
 
-                if (proceeding && requestLoadProgram())
+                if (srvRobotMode.response.robot_mode.mode == ur_dashboard_msgs::RobotMode::RUNNING)
                 {
                     requestPlay();
-                    // connection will be refused at startup while there is an autorunning program
-                    // trick is to disconnect and reconnect
-                    disconnect();
-                    reconnect();
-                    closePopups();
 
                     std::lock_guard<std::mutex> lock(mtx_);
                     standby_ = true;
@@ -251,31 +246,8 @@ namespace whi_ur_robot_driver_bridge
     {
         bool res = false;
 
-        // deactive running program first
-        std::string service(service_prefix_ + prefix_dashboard_ + "program_running");
-        auto clientRunning = std::make_unique<ros::ServiceClient>(
-            node_handle_ns_free_->serviceClient<ur_dashboard_msgs::IsProgramRunning>(service));
-        ur_dashboard_msgs::IsProgramRunning srvRunning;
-        if (clientRunning->call(srvRunning))
-        {
-            if (srvRunning.response.program_running)
-            {
-                service.assign(service_prefix_ + prefix_dashboard_ + "stop");
-                auto clientStop = std::make_unique<ros::ServiceClient>(
-                    node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
-                std_srvs::Trigger srv;
-                if (clientStop->call(srv))
-                {
-                    if (srv.response.success)
-                    {
-                        ROS_INFO_STREAM("stop running program successfully");
-                    }
-                }
-            }
-        }
-
         // service load_program
-        service.assign(service_prefix_ + prefix_dashboard_ + "load_program");
+        std::string service(service_prefix_ + prefix_dashboard_ + "load_program");
         auto clientLoadProgram = std::make_unique<ros::ServiceClient>(
             node_handle_ns_free_->serviceClient<ur_dashboard_msgs::Load>(service));
         ur_dashboard_msgs::Load srvLoadProgram;
@@ -301,6 +273,61 @@ namespace whi_ur_robot_driver_bridge
         return res;
     }
 
+    std::string UrRobotDriverBridge::getLoadedProgram()
+    {
+        std::string loaded;
+
+        std::string service(service_prefix_ + prefix_dashboard_ + "get_loaded_program");
+        auto clientLoaded = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<ur_dashboard_msgs::GetLoadedProgram>(service));
+        ur_dashboard_msgs::GetLoadedProgram srvLoaded;
+        if (clientLoaded->call(srvLoaded))
+        {
+            loaded.assign(srvLoaded.response.program_name);
+        }
+        else
+        {
+            ROS_ERROR_STREAM("failed to call service " << service);
+        }
+
+        return loaded;
+    }
+
+    bool UrRobotDriverBridge::deactiveRunningProgram()
+    {
+        bool res = false;
+
+        std::string service(service_prefix_ + prefix_dashboard_ + "program_running");
+        auto clientRunning = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<ur_dashboard_msgs::IsProgramRunning>(service));
+        ur_dashboard_msgs::IsProgramRunning srvRunning;
+        if (clientRunning->call(srvRunning))
+        {
+            if (srvRunning.response.program_running)
+            {
+                service.assign(service_prefix_ + prefix_dashboard_ + "stop");
+                auto clientStop = std::make_unique<ros::ServiceClient>(
+                    node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+                std_srvs::Trigger srv;
+                if (clientStop->call(srv))
+                {
+                    if (srv.response.success)
+                    {
+                        ROS_INFO_STREAM("stop running program successfully");
+                    }
+                }
+            }
+
+            res = true;
+        }
+        else
+        {
+            ROS_ERROR_STREAM("failed to call service " << service);
+        }
+
+        return res;
+    }
+
     bool UrRobotDriverBridge::requestPlay()
     {
         bool res = false;
@@ -316,6 +343,34 @@ namespace whi_ur_robot_driver_bridge
             {
                 res = true;
                 ROS_INFO_STREAM("UR is standby");
+            }
+            else
+            {
+                ROS_ERROR_STREAM("failed to execute service " << service);
+            }
+        }
+        else
+        {
+            ROS_ERROR_STREAM("failed to call service " << service);
+        }
+
+        return res;
+    }
+
+    bool UrRobotDriverBridge::powerOff()
+    {
+        bool res = false;
+
+        std::string service(service_prefix_ + prefix_dashboard_ + "power_off");
+        auto clientPowerOff = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+        std_srvs::Trigger srv;
+        if (clientPowerOff->call(srv))
+        {
+            if (srv.response.success)
+            {
+                res = true;
+                ROS_INFO_STREAM("power off successfully");
             }
             else
             {

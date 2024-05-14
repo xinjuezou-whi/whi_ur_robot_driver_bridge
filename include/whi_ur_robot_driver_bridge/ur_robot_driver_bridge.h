@@ -40,7 +40,10 @@ namespace whi_ur_robot_driver_bridge
         void beStandby();
         void threadSafty();
         bool requestLoadProgram();
+        std::string getLoadedProgram();
+        bool deactiveRunningProgram();
         bool requestPlay();
+        bool powerOff();
         bool closePopups();
         bool isProtective();
         bool recoverFromProtective();

@@ -1,6 +1,6 @@
 whi_ur_robot_driver_bridge:
-  try_duration: 2 # second
-  try_max_count: 10
+  try_duration: 10 # second
+  try_max_count: 20
   external_program: external_ctrl.urp
   protective_query_frequency: 10.0 # Hz
   state_topic: arm_motion_state
