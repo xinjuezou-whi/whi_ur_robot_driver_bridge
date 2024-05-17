@@ -125,6 +125,9 @@ namespace whi_ur_robot_driver_bridge
                     proceeding = recoverFromProtective();
                 }
 
+                bool fromRunning = srvRobotMode.response.robot_mode.mode == ur_dashboard_msgs::RobotMode::RUNNING ?
+                    true : false;
+
                 /// handle power on process
                 while (proceeding && clientRobotMode->call(srvRobotMode))
                 {
@@ -174,14 +177,20 @@ namespace whi_ur_robot_driver_bridge
                         }
                         break;
                     case ur_dashboard_msgs::RobotMode::RUNNING:
-                        if (getLoadedProgram().find(external_program_) == std::string::npos)
+                        if (fromRunning)
                         {
-                            deactiveRunningProgram();
-                            requestLoadProgram();
+                            if (getLoadedProgram().find(external_program_) == std::string::npos)
+                            {
+                                deactiveRunningProgram();
+                                requestLoadProgram();
+                                
+                            }
                             powerOff();
+                            fromRunning = false;
                         }
                         else
                         {
+                            requestLoadProgram();
                             proceeding = false;
                         }
                         break;
