@@ -198,6 +198,11 @@ namespace whi_ur_robot_driver_bridge
                         break;
                     }
 
+                    // publish state
+                    whi_interfaces::WhiMotionState msg;
+                    msg.state = whi_interfaces::WhiMotionState::STA_BOOTING;
+                    pub_motion_state_->publish(msg);
+
                     std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 }
 
@@ -239,12 +244,14 @@ namespace whi_ur_robot_driver_bridge
                     {
                         standby_ = true;
                     }
-
-                    // send recovered message
-                    whi_interfaces::WhiMotionState msg;
-                    msg.state = whi_interfaces::WhiMotionState::STA_STANDBY;
-                    pub_motion_state_->publish(msg);
                 }
+            }
+            else
+            {
+                // send standby message
+                whi_interfaces::WhiMotionState msg;
+                msg.state = whi_interfaces::WhiMotionState::STA_STANDBY;
+                pub_motion_state_->publish(msg);
             }
 
             std::this_thread::sleep_for(std::chrono::milliseconds(safty_query_duration_));
