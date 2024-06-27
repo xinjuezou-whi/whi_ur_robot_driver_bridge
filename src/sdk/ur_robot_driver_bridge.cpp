@@ -145,6 +145,17 @@ namespace whi_ur_robot_driver_bridge
                                 proceeding = false;
                                 ROS_ERROR_STREAM("failed to call service " << service);
                             }
+                            else
+                            {
+                                if (!srv.response.success)
+                                {
+                                    if (!disconnect() || !reconnect())
+                                    {
+                                        proceeding = false;
+                                        ROS_ERROR_STREAM("failed to booting UR");
+                                    }
+                                }
+                            }
                         }
                         break;
                     case ur_dashboard_msgs::RobotMode::IDLE:
