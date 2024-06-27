@@ -125,12 +125,12 @@ namespace whi_ur_robot_driver_bridge
                     proceeding = recoverFromProtective();
                 }
 
-                bool fromRunning = srvRobotMode.response.robot_mode.mode == ur_dashboard_msgs::RobotMode::RUNNING ?
-                    true : false;
-
                 /// handle power on process
                 while (proceeding && clientRobotMode->call(srvRobotMode))
                 {
+#ifdef DEBUG
+                    std::cout << "mode in looppppppppppp " << int(srvRobotMode.response.robot_mode.mode) << std::endl;
+#endif        
                     switch (srvRobotMode.response.robot_mode.mode)
                     {
                     case ur_dashboard_msgs::RobotMode::POWER_OFF:
@@ -175,22 +175,20 @@ namespace whi_ur_robot_driver_bridge
                                 }
                             }
                         }
-                        break;
-                    case ur_dashboard_msgs::RobotMode::RUNNING:
-                        if (fromRunning)
-                        {
-                            if (getLoadedProgram().find(external_program_) == std::string::npos)
-                            {
-                                deactiveRunningProgram();
-                                requestLoadProgram();
-                                
-                            }
-                            powerOff();
-                            fromRunning = false;
-                        }
                         else
                         {
                             requestLoadProgram();
+                        }
+                        break;
+                    case ur_dashboard_msgs::RobotMode::RUNNING:
+                        if (getLoadedProgram().find(external_program_) == std::string::npos)
+                        {
+                            deactiveRunningProgram();
+                            requestLoadProgram();
+                            powerOff();
+                        }
+                        else
+                        {
                             proceeding = false;
                         }
                         break;
@@ -206,13 +204,28 @@ namespace whi_ur_robot_driver_bridge
                     std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 }
 
+#ifdef DEBUG
+                std::cout << "mode outsides loopppppppppppp " << int(srvRobotMode.response.robot_mode.mode) << std::endl;
+#endif                
                 if (srvRobotMode.response.robot_mode.mode == ur_dashboard_msgs::RobotMode::RUNNING)
                 {
-                    requestPlay();
+                    bool res = false;
+                    int tryCount = 0;
+                    do
+                    {
+                        res = requestPlay();
+                    } while (!res && ++tryCount <= this->try_max_count_);
 
-                    std::lock_guard<std::mutex> lock(mtx_);
-                    standby_ = true;
-                    cv_.notify_all();
+                    if (res)
+                    {
+                        std::lock_guard<std::mutex> lock(mtx_);
+                        standby_ = true;
+                        cv_.notify_all();
+                    }
+                    else
+                    {
+                        ROS_ERROR_STREAM("failed to boot ur");
+                    }
                 }
             }
         }.detach();
