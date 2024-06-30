@@ -21,6 +21,7 @@ Changelog:
 #include "whi_interfaces/WhiSrvIo.h"
 #include <ros/ros.h>
 #include <std_srvs/Trigger.h>
+#include <std_msgs/Bool.h>
 
 #include <memory>
 #include <mutex>
@@ -47,10 +48,12 @@ namespace whi_ur_robot_driver_bridge
         bool closePopups();
         bool isProtective();
         bool recoverFromProtective();
+        bool isInRemote();
         bool disconnect();
         bool reconnect();
         bool onServiceIo(whi_interfaces::WhiSrvIo::Request& Request, whi_interfaces::WhiSrvIo::Response& Response);
         bool onServiceReady(std_srvs::Trigger::Request& Request, std_srvs::Trigger::Response& Response);
+        void callbackMotionState(const std_msgs::Bool::ConstPtr& Msg);
 
     protected:
         std::shared_ptr<ros::NodeHandle> node_handle_{ nullptr };
@@ -66,9 +69,11 @@ namespace whi_ur_robot_driver_bridge
         std::atomic_bool terminated_{ false };
         int safty_query_duration_{ 0 };
         std::unique_ptr<ros::Publisher> pub_motion_state_{ nullptr };
+        std::unique_ptr<ros::Subscriber> sub_moveit_cpp_state_{ nullptr };
         std::string service_prefix_{ "ur_hardware_interface/" };
         std::string prefix_dashboard_{ "dashboard/" };
         std::unique_ptr<ros::ServiceServer> server_io_{ nullptr };
         std::unique_ptr<ros::ServiceServer> server_ready_{ nullptr };
+        bool moveit_cpp_ready_{ false };
 	};
 } // namespace whi_ur_robot_driver_bridge

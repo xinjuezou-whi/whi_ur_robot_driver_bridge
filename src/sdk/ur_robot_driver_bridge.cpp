@@ -23,10 +23,13 @@ All text above must be included in any redistribution.
 #include <ur_dashboard_msgs/GetLoadedProgram.h>
 #include <ur_dashboard_msgs/Load.h>
 #include <ur_dashboard_msgs/IsProgramRunning.h>
+#include <ur_dashboard_msgs/IsInRemoteControl.h>
 #include <ur_msgs/SetIO.h>
 #include <std_srvs/Trigger.h>
 
 #include <thread>
+
+// #define DEBUG
 
 namespace whi_ur_robot_driver_bridge
 {
@@ -71,10 +74,8 @@ namespace whi_ur_robot_driver_bridge
         if (safty_query_duration_ > 0)
         {
             // create state publisher
-            std::string stateTopic;
-            node_handle_->param("state_topic", stateTopic, std::string("arm_moton_state"));
             pub_motion_state_ = std::make_unique<ros::Publisher>(
-                node_handle_->advertise<whi_interfaces::WhiMotionState>(stateTopic, 1));
+                node_handle_->advertise<whi_interfaces::WhiMotionState>("arm_moton_state", 1));
             // spawn the safty monitor thread
 		    th_safty_ = std::thread(std::bind(&UrRobotDriverBridge::threadSafty, this));
         }
@@ -84,6 +85,16 @@ namespace whi_ur_robot_driver_bridge
             node_handle_->advertiseService("io_request", &UrRobotDriverBridge::onServiceIo, this));
         server_ready_ = std::make_unique<ros::ServiceServer>(
             node_handle_->advertiseService("arm_ready", &UrRobotDriverBridge::onServiceReady, this));
+
+        // state from moveit_cpp
+        std::string moveitTopic;
+        node_handle_->param("moveit_cpp_state_topic", moveitTopic, std::string(""));
+        if (!moveitTopic.empty())
+        {
+            sub_moveit_cpp_state_ = std::make_unique<ros::Subscriber>(
+			    node_handle_->subscribe<std_msgs::Bool>(moveitTopic, 10,
+			    std::bind(&UrRobotDriverBridge::callbackMotionState, this, std::placeholders::_1)));
+        }
     }
 
     void UrRobotDriverBridge::beStandby()
@@ -114,103 +125,139 @@ namespace whi_ur_robot_driver_bridge
                         std::this_thread::sleep_for(std::chrono::seconds(this->try_duration_));
                     }
                 }
+                // check if is in remote mode
+                tryCount = 0;
+                while (!isInRemote())
+                {
+                    if (++tryCount > this->try_max_count_)
+                    {
+                        ROS_ERROR_STREAM("failed to boot UR since it is not in remote mode");
+
+                        return;
+                    }
+                    else
+                    {
+                        ROS_WARN_STREAM("UR is not in remote mode, please set it to remote, attempt to another try in 5 seconds");
+                        std::this_thread::sleep_for(std::chrono::seconds(5));
+                    }
+                }
+                if (tryCount > 0)
+                {
+                    if (!disconnect() || !reconnect())
+                    {
+                        ROS_ERROR_STREAM("failed to booting UR due to connection issue");
+                        return;
+                    }
+                }
 
                 /// clear state
                 // close popups
                 closePopups();
                 // recover from protective
-                bool proceeding = true;
                 if (isProtective())
                 {
-                    proceeding = recoverFromProtective();
+                    recoverFromProtective();
                 }
 
                 /// handle power on process
-                while (proceeding && clientRobotMode->call(srvRobotMode))
+                while (clientRobotMode->call(srvRobotMode))
                 {
-#ifdef DEBUG
-                    std::cout << "mode in looppppppppppp " << int(srvRobotMode.response.robot_mode.mode) << std::endl;
-#endif        
-                    switch (srvRobotMode.response.robot_mode.mode)
-                    {
-                    case ur_dashboard_msgs::RobotMode::POWER_OFF:
-                        {
-                            // service power_on
-                            service.assign(service_prefix_ + prefix_dashboard_ + "power_on");
-                            auto clientPowerOn = std::make_unique<ros::ServiceClient>(
-                                node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
-                            std_srvs::Trigger srv;
-                            if (!clientPowerOn->call(srv))
-                            {
-                                proceeding = false;
-                                ROS_ERROR_STREAM("failed to call service " << service);
-                            }
-                            else
-                            {
-                                if (!srv.response.success)
-                                {
-                                    if (!disconnect() || !reconnect())
-                                    {
-                                        proceeding = false;
-                                        ROS_ERROR_STREAM("failed to booting UR");
-                                    }
-                                }
-                            }
-                        }
-                        break;
-                    case ur_dashboard_msgs::RobotMode::IDLE:
-                        if (getLoadedProgram().find(external_program_) != std::string::npos)
-                        {
-                            // service brake_release
-                            static bool responseSucceed = false;
-                            static int tryCount = 0;
-                            if (!responseSucceed)
-                            {
-                                service.assign(service_prefix_ + prefix_dashboard_ + "brake_release");
-                                auto clientBrakeRelease = std::make_unique<ros::ServiceClient>(
-                                    node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
-                                std_srvs::Trigger srv;
-                                if (!clientBrakeRelease->call(srv))
-                                {
-                                    proceeding = false;
-                                    ROS_ERROR_STREAM("failed to call service " << service);
-                                }
-                                else
-                                {
-                                    responseSucceed = srv.response.success;
-                                    if (!responseSucceed && ++tryCount > 5)
-                                    {
-                                        proceeding = false;
-                                        ROS_ERROR_STREAM("failed to execute service " << service);
-                                    }
-                                }
-                            }
-                        }
-                        else
-                        {
-                            requestLoadProgram();
-                        }
-                        break;
-                    case ur_dashboard_msgs::RobotMode::RUNNING:
-                        if (getLoadedProgram().find(external_program_) == std::string::npos)
-                        {
-                            deactiveRunningProgram();
-                            requestLoadProgram();
-                            powerOff();
-                        }
-                        else
-                        {
-                            proceeding = false;
-                        }
-                        break;
-                    default:
-                        break;
-                    }
-
                     // publish state
                     whi_interfaces::WhiMotionState msg;
                     msg.state = whi_interfaces::WhiMotionState::STA_BOOTING;
                     pub_motion_state_->publish(msg);
+
+#ifdef DEBUG
+                    std::cout << "mode in looppppppppppp " << int(srvRobotMode.response.robot_mode.mode) << std::endl;
+#endif        
+                    if (srvRobotMode.response.robot_mode.mode == ur_dashboard_msgs::RobotMode::POWER_OFF)
+                    {
+                        // service power_on
+                        service.assign(service_prefix_ + prefix_dashboard_ + "power_on");
+                        auto clientPowerOn = std::make_unique<ros::ServiceClient>(
+                            node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+                        std_srvs::Trigger srv;
+#ifdef DEBUG
+std::cout << "state power offffffffffffffff calling power on" << std::endl;
+#endif         
+                        if (!clientPowerOn->call(srv) || !srv.response.success)
+                        {
+#ifdef DEBUG
+std::cout << "state power offffffffffffffff calling disconnect and reconnect" << std::endl;
+#endif  
+                            disconnect();
+                            reconnect();
+                            ROS_ERROR_STREAM("failed to call service " << service);
+                        }
+                    }
+                    else if (srvRobotMode.response.robot_mode.mode == ur_dashboard_msgs::RobotMode::IDLE)
+                    {
+                        if (getLoadedProgram().find(external_program_) != std::string::npos)
+                        {
+                            // service brake_release
+                            service.assign(service_prefix_ + prefix_dashboard_ + "brake_release");
+                            auto clientBrakeRelease = std::make_unique<ros::ServiceClient>(
+                                node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+                            std_srvs::Trigger srv;
+#ifdef DEBUG
+std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
+#endif  
+                            if (!clientBrakeRelease->call(srv) || !srv.response.success)
+                            {
+                                disconnect();
+                                reconnect();
+                                ROS_ERROR_STREAM("failed to call service " << service);
+                            }
+                        }
+                        else
+                        {
+#ifdef DEBUG
+    std::cout << "state idleeeeeeeeeeeeeeee calling program load" << std::endl;
+#endif  
+                            if (!requestLoadProgram())
+                            {
+                                disconnect();
+                                reconnect();
+                            }
+                        }
+                    }
+                    else if (srvRobotMode.response.robot_mode.mode == ur_dashboard_msgs::RobotMode::RUNNING)
+                    {
+#ifdef DEBUG
+    std::cout << "state runninggggggggggggg" << std::endl;
+#endif  
+                        if (getLoadedProgram().find(external_program_) == std::string::npos)
+                        {
+                            if (!deactiveRunningProgram())
+                            {
+                                disconnect();
+                                reconnect();
+                            }
+                            else
+                            {
+                                if (!requestLoadProgram())
+                                {
+                                    disconnect();
+                                    reconnect();
+                                }
+                                else
+                                {
+                                    if (!powerOff())
+                                    {
+                                        disconnect();
+                                        reconnect();
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+#ifdef DEBUG
+    std::cout << "state runninggggggggggggg break loop" << std::endl;
+#endif  
+                            break;
+                        }
+                    }
 
                     std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 }
@@ -224,7 +271,14 @@ namespace whi_ur_robot_driver_bridge
                     int tryCount = 0;
                     do
                     {
+                        disconnect();
+                        reconnect();
+                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
                         res = requestPlay();
+                        if (!res)
+                        {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                        }
                     } while (!res && ++tryCount <= this->try_max_count_);
 
                     if (res)
@@ -259,9 +313,9 @@ namespace whi_ur_robot_driver_bridge
                 // recover and then reload the program
                 if (recoverFromProtective())
                 {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(300));
                     // close popups
                     closePopups();
-                    std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
                     // reload and replay
                     if (requestLoadProgram() && requestPlay())
@@ -274,7 +328,15 @@ namespace whi_ur_robot_driver_bridge
             {
                 // send standby message
                 whi_interfaces::WhiMotionState msg;
-                msg.state = whi_interfaces::WhiMotionState::STA_STANDBY;
+                if (sub_moveit_cpp_state_)
+                {
+                    msg.state = moveit_cpp_ready_ ?
+                        whi_interfaces::WhiMotionState::STA_STANDBY : whi_interfaces::WhiMotionState::STA_BOOTING;
+                }
+                else
+                {
+                    msg.state = whi_interfaces::WhiMotionState::STA_STANDBY;
+                }
                 pub_motion_state_->publish(msg);
             }
 
@@ -484,18 +546,27 @@ namespace whi_ur_robot_driver_bridge
         auto clientSafetyMode = std::make_unique<ros::ServiceClient>(
             node_handle_ns_free_->serviceClient<ur_dashboard_msgs::GetSafetyMode>(service));
         ur_dashboard_msgs::GetSafetyMode srvSafetyMode;
-        clientSafetyMode->call(srvSafetyMode);
-        if (srvSafetyMode.response.safety_mode.mode == ur_dashboard_msgs::SafetyMode::PROTECTIVE_STOP)
+        if (clientSafetyMode->call(srvSafetyMode))
         {
-            whi_interfaces::WhiMotionState msg;
-            msg.state = whi_interfaces::WhiMotionState::STA_FAULT;
-            pub_motion_state_->publish(msg);
+            if (srvSafetyMode.response.safety_mode.mode == ur_dashboard_msgs::SafetyMode::PROTECTIVE_STOP)
+            {
+                whi_interfaces::WhiMotionState msg;
+                msg.state = whi_interfaces::WhiMotionState::STA_FAULT;
+                pub_motion_state_->publish(msg);
 
-            ROS_WARN_STREAM("UR entered protective stop state");
+                ROS_WARN_STREAM("UR entered protective stop state");
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else
+        {
+            closePopups();
             return true;
         }
-
-        return false;
     }
 
     bool UrRobotDriverBridge::recoverFromProtective()
@@ -530,6 +601,24 @@ namespace whi_ur_robot_driver_bridge
         }
         
         return res;
+    }
+
+    bool UrRobotDriverBridge::isInRemote()
+    {
+        // service is_in_remote_control
+        std::string service(service_prefix_ + prefix_dashboard_ + "is_in_remote_control");
+        auto clientRemote = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<ur_dashboard_msgs::IsInRemoteControl>(service));
+        ur_dashboard_msgs::IsInRemoteControl srvRemote;
+        if (clientRemote->call(srvRemote) && srvRemote.response.success)
+        {
+            return srvRemote.response.in_remote_control;
+        }
+        else
+        {
+            ROS_ERROR_STREAM("failed to call service " << service);
+            return false;
+        }   
     }
 
     bool UrRobotDriverBridge::disconnect()
@@ -626,5 +715,10 @@ namespace whi_ur_robot_driver_bridge
     bool UrRobotDriverBridge::onServiceReady(std_srvs::Trigger::Request& Request, std_srvs::Trigger::Response& Response)
     {
         return (Response.success = standby_);
+    }
+
+    void UrRobotDriverBridge::callbackMotionState(const std_msgs::Bool::ConstPtr& Msg)
+    {
+        moveit_cpp_ready_ = Msg->data;
     }
 } // namespace whi_ur_robot_driver_bridge
