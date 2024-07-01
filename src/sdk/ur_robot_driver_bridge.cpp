@@ -252,10 +252,26 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
                         }
                         else
                         {
-#ifdef DEBUG
-    std::cout << "state runninggggggggggggg break loop" << std::endl;
-#endif  
-                            break;
+                            if (!isProgramRunning())
+                            {
+                                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                                if (!requestPlay())
+                                {
+                                    disconnect();
+                                    reconnect();
+                                }
+                            }
+                            else
+                            {
+                                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                                closePopups();
+
+                                std::lock_guard<std::mutex> lock(mtx_);
+                                standby_ = true;
+                                cv_.notify_all();
+
+                                break;
+                            }
                         }
                     }
 
@@ -264,34 +280,7 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
 
 #ifdef DEBUG
                 std::cout << "mode outsides loopppppppppppp " << int(srvRobotMode.response.robot_mode.mode) << std::endl;
-#endif                
-                if (srvRobotMode.response.robot_mode.mode == ur_dashboard_msgs::RobotMode::RUNNING)
-                {
-                    bool res = false;
-                    int tryCount = 0;
-                    do
-                    {
-                        disconnect();
-                        reconnect();
-                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                        res = requestPlay();
-                        if (!res)
-                        {
-                            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                        }
-                    } while (!res && ++tryCount <= this->try_max_count_);
-
-                    if (res)
-                    {
-                        std::lock_guard<std::mutex> lock(mtx_);
-                        standby_ = true;
-                        cv_.notify_all();
-                    }
-                    else
-                    {
-                        ROS_ERROR_STREAM("failed to boot ur");
-                    }
-                }
+#endif
             }
         }.detach();
     }
@@ -613,6 +602,24 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
         if (clientRemote->call(srvRemote) && srvRemote.response.success)
         {
             return srvRemote.response.in_remote_control;
+        }
+        else
+        {
+            ROS_ERROR_STREAM("failed to call service " << service);
+            return false;
+        }   
+    }
+
+    bool UrRobotDriverBridge::isProgramRunning()
+    {
+        // service program_state
+        std::string service(service_prefix_ + prefix_dashboard_ + "program_state");
+        auto client = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<ur_dashboard_msgs::GetProgramState>(service));
+        ur_dashboard_msgs::GetProgramState srv;
+        if (client->call(srv) && srv.response.success)
+        {
+            return srv.response.answer.find("PLAYING") == std::string::npos ? false : true;
         }
         else
         {

@@ -49,6 +49,7 @@ namespace whi_ur_robot_driver_bridge
         bool isProtective();
         bool recoverFromProtective();
         bool isInRemote();
+        bool isProgramRunning();
         bool disconnect();
         bool reconnect();
         bool onServiceIo(whi_interfaces::WhiSrvIo::Request& Request, whi_interfaces::WhiSrvIo::Response& Response);
