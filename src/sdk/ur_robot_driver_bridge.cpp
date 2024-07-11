@@ -62,23 +62,26 @@ namespace whi_ur_robot_driver_bridge
         node_handle_->param("try_duration", try_duration_, 10);
         node_handle_->param("try_max_count", try_max_count_, 20);
         node_handle_->param("external_program", external_program_, std::string("external_ctrl.urp"));
+
+        // create state publisher
+        pub_motion_state_ = std::make_unique<ros::Publisher>(
+            node_handle_->advertise<whi_interfaces::WhiMotionState>("arm_moton_state", 1));
+
+        // safty monitoring thread
         double frequency = 0.0;
         node_handle_->param("protective_query_frequency", frequency, 0.0);
         if (frequency > 1e-5)
         {
             safty_query_duration_ = int(1000.0 / frequency);
         }
-
-        beStandby();
-
         if (safty_query_duration_ > 0)
         {
-            // create state publisher
-            pub_motion_state_ = std::make_unique<ros::Publisher>(
-                node_handle_->advertise<whi_interfaces::WhiMotionState>("arm_moton_state", 1));
             // spawn the safty monitor thread
 		    th_safty_ = std::thread(std::bind(&UrRobotDriverBridge::threadSafty, this));
         }
+
+        // to initiate
+        beStandby();
 
         // advertise io service with fixed name
 		server_io_ = std::make_unique<ros::ServiceServer>(
@@ -86,13 +89,13 @@ namespace whi_ur_robot_driver_bridge
         server_ready_ = std::make_unique<ros::ServiceServer>(
             node_handle_->advertiseService("arm_ready", &UrRobotDriverBridge::onServiceReady, this));
 
-        // state from moveit_cpp
+        // subscibe the state from moveit_cpp
         std::string moveitTopic;
         node_handle_->param("moveit_cpp_state_topic", moveitTopic, std::string(""));
         if (!moveitTopic.empty())
         {
             sub_moveit_cpp_state_ = std::make_unique<ros::Subscriber>(
-			    node_handle_->subscribe<std_msgs::Bool>(moveitTopic, 10,
+			    node_handle_ns_free_->subscribe<std_msgs::Bool>(moveitTopic, 10,
 			    std::bind(&UrRobotDriverBridge::callbackMotionState, this, std::placeholders::_1)));
         }
     }
@@ -103,6 +106,9 @@ namespace whi_ur_robot_driver_bridge
         {
             [this]() -> void
             {
+                whi_interfaces::WhiMotionState msg;
+                msg.state = whi_interfaces::WhiMotionState::STA_BOOTING;
+
                 /// query the robot state till arm is started
                 // service get_robot_mode
                 std::string service(service_prefix_ + prefix_dashboard_ + "get_robot_mode");
@@ -112,6 +118,9 @@ namespace whi_ur_robot_driver_bridge
                 int tryCount = 0;
                 while (!clientRobotMode->call(srvRobotMode))
                 {
+                    // publish the booting state
+                    pub_motion_state_->publish(msg);
+
                     if (++tryCount > this->try_max_count_)
                     {
                         ROS_ERROR_STREAM("failed to call service " << service);
@@ -129,6 +138,9 @@ namespace whi_ur_robot_driver_bridge
                 tryCount = 0;
                 while (!isInRemote())
                 {
+                    // publish the booting state
+                    pub_motion_state_->publish(msg);
+
                     if (++tryCount > this->try_max_count_)
                     {
                         ROS_ERROR_STREAM("failed to boot UR since it is not in remote mode");
@@ -162,9 +174,7 @@ namespace whi_ur_robot_driver_bridge
                 /// handle power on process
                 while (clientRobotMode->call(srvRobotMode))
                 {
-                    // publish state
-                    whi_interfaces::WhiMotionState msg;
-                    msg.state = whi_interfaces::WhiMotionState::STA_BOOTING;
+                    // publish the booting state
                     pub_motion_state_->publish(msg);
 
 #ifdef DEBUG
@@ -187,6 +197,7 @@ std::cout << "state power offffffffffffffff calling disconnect and reconnect" <<
 #endif  
                             disconnect();
                             reconnect();
+                            closePopups();
                             ROS_ERROR_STREAM("failed to call service " << service);
                         }
                     }
@@ -206,6 +217,7 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
                             {
                                 disconnect();
                                 reconnect();
+                                closePopups();
                                 ROS_ERROR_STREAM("failed to call service " << service);
                             }
                         }
@@ -218,6 +230,7 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
                             {
                                 disconnect();
                                 reconnect();
+                                closePopups();
                             }
                         }
                     }
@@ -232,6 +245,7 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
                             {
                                 disconnect();
                                 reconnect();
+                                closePopups();
                             }
                             else
                             {
@@ -239,6 +253,7 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
                                 {
                                     disconnect();
                                     reconnect();
+                                    closePopups();
                                 }
                                 else
                                 {
@@ -246,6 +261,7 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
                                     {
                                         disconnect();
                                         reconnect();
+                                        closePopups();
                                     }
                                 }
                             }
@@ -254,18 +270,20 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
                         {
                             if (!isProgramRunning())
                             {
-                                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                                std::this_thread::sleep_for(std::chrono::milliseconds(400));
                                 if (!requestPlay())
                                 {
                                     disconnect();
                                     reconnect();
+                                    closePopups();
+                                }
+                                else
+                                {
+                                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
                                 }
                             }
                             else
                             {
-                                std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                                closePopups();
-
                                 std::lock_guard<std::mutex> lock(mtx_);
                                 standby_ = true;
                                 cv_.notify_all();
@@ -277,7 +295,6 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
 
                     std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 }
-
 #ifdef DEBUG
                 std::cout << "mode outsides loopppppppppppp " << int(srvRobotMode.response.robot_mode.mode) << std::endl;
 #endif

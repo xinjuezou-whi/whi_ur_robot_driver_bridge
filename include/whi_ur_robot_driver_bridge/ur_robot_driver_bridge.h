@@ -59,7 +59,6 @@ namespace whi_ur_robot_driver_bridge
     protected:
         std::shared_ptr<ros::NodeHandle> node_handle_{ nullptr };
         std::shared_ptr<ros::NodeHandle> node_handle_ns_free_{ nullptr };
-        std::unique_ptr<ros::ServiceClient> client_power_off_{ nullptr };
         int try_duration_{ 2 }; // second
         int try_max_count_{ 10 };
         std::string external_program_{ "external_ctrl.urp" };
