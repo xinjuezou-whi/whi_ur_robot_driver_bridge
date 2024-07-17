@@ -155,7 +155,7 @@ namespace whi_ur_robot_driver_bridge
                 }
                 if (tryCount > 0)
                 {
-                    if (!disconnect() || !reconnect())
+                    if (disconnect() == RES_FAILED_CALL || reconnect() == RES_FAILED_CALL)
                     {
                         ROS_ERROR_STREAM("failed to booting UR due to connection issue");
                         return;
@@ -172,6 +172,7 @@ namespace whi_ur_robot_driver_bridge
                 }
 
                 /// handle power on process
+                int programRunningCount = 0;
                 while (clientRobotMode->call(srvRobotMode))
                 {
                     // publish the booting state
@@ -182,55 +183,47 @@ namespace whi_ur_robot_driver_bridge
 #endif        
                     if (srvRobotMode.response.robot_mode.mode == ur_dashboard_msgs::RobotMode::POWER_OFF)
                     {
-                        // service power_on
-                        service.assign(service_prefix_ + prefix_dashboard_ + "power_on");
-                        auto clientPowerOn = std::make_unique<ros::ServiceClient>(
-                            node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
-                        std_srvs::Trigger srv;
 #ifdef DEBUG
-std::cout << "state power offffffffffffffff calling power on" << std::endl;
-#endif         
-                        if (!clientPowerOn->call(srv) || !srv.response.success)
+                        std::cout << "state power offffffffffffffff calling power on" << std::endl;
+#endif       
+                        if (powerOn() == RES_FAILED_CALL)
                         {
 #ifdef DEBUG
-std::cout << "state power offffffffffffffff calling disconnect and reconnect" << std::endl;
+                            std::cout << "state power offffffffffffffff calling disconnect and reconnect" << std::endl;
 #endif  
                             disconnect();
                             reconnect();
                             closePopups();
-                            ROS_ERROR_STREAM("failed to call service " << service);
                         }
                     }
                     else if (srvRobotMode.response.robot_mode.mode == ur_dashboard_msgs::RobotMode::IDLE)
                     {
                         if (getLoadedProgram().find(external_program_) != std::string::npos)
                         {
-                            // service brake_release
-                            service.assign(service_prefix_ + prefix_dashboard_ + "brake_release");
-                            auto clientBrakeRelease = std::make_unique<ros::ServiceClient>(
-                                node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
-                            std_srvs::Trigger srv;
 #ifdef DEBUG
-std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
+                            std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
 #endif  
-                            if (!clientBrakeRelease->call(srv) || !srv.response.success)
+                            if (releaseBrake() == RES_FAILED_CALL)
                             {
                                 disconnect();
                                 reconnect();
                                 closePopups();
-                                ROS_ERROR_STREAM("failed to call service " << service);
-                            }
+                            } 
                         }
                         else
                         {
 #ifdef DEBUG
     std::cout << "state idleeeeeeeeeeeeeeee calling program load" << std::endl;
 #endif  
-                            if (!requestLoadProgram())
+                            if (requestLoadProgram() == RES_FAILED_CALL)
                             {
                                 disconnect();
                                 reconnect();
                                 closePopups();
+                            }
+                            else
+                            {
+                                std::this_thread::sleep_for(std::chrono::milliseconds(200));
                             }
                         }
                     }
@@ -241,7 +234,8 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
 #endif  
                         if (getLoadedProgram().find(external_program_) == std::string::npos)
                         {
-                            if (!deactiveRunningProgram())
+                            int res = deactiveRunningProgram();
+                            if (res == RES_FAILED_CALL)
                             {
                                 disconnect();
                                 reconnect();
@@ -249,7 +243,8 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
                             }
                             else
                             {
-                                if (!requestLoadProgram())
+                                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                                if (requestLoadProgram() == RES_FAILED_CALL)
                                 {
                                     disconnect();
                                     reconnect();
@@ -257,7 +252,8 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
                                 }
                                 else
                                 {
-                                    if (!powerOff())
+                                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                                    if (powerOff() == RES_FAILED_CALL)
                                     {
                                         disconnect();
                                         reconnect();
@@ -270,25 +266,28 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
                         {
                             if (!isProgramRunning())
                             {
-                                std::this_thread::sleep_for(std::chrono::milliseconds(400));
-                                if (!requestPlay())
+                                if (requestPlay() == RES_FAILED_CALL)
                                 {
                                     disconnect();
                                     reconnect();
                                     closePopups();
                                 }
-                                else
-                                {
-                                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                                }
                             }
                             else
                             {
-                                std::lock_guard<std::mutex> lock(mtx_);
-                                standby_ = true;
-                                cv_.notify_all();
+                                if (++programRunningCount >= 3)
+                                {
+                                    std::lock_guard<std::mutex> lock(mtx_);
+                                    standby_ = true;
+                                    cv_.notify_all();
 
-                                break;
+                                    break;
+                                }
+                                else
+                                {
+                                    reconnect();
+                                    closePopups();
+                                }
                             }
                         }
                     }
@@ -317,7 +316,7 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
                 standby_ = false;
 
                 // recover and then reload the program
-                if (recoverFromProtective())
+                if (recoverFromProtective() != RES_FAILED_EXECUTE)
                 {
                     std::this_thread::sleep_for(std::chrono::milliseconds(300));
                     // close popups
@@ -328,6 +327,13 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
                     {
                         standby_ = true;
                     }
+                }
+                else
+                {
+                    disconnect();
+                    reconnect();
+                    closePopups();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 }
             }
             else
@@ -350,37 +356,6 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
         }
     }
 
-    bool UrRobotDriverBridge::requestLoadProgram()
-    {
-        bool res = false;
-
-        // service load_program
-        std::string service(service_prefix_ + prefix_dashboard_ + "load_program");
-        auto clientLoadProgram = std::make_unique<ros::ServiceClient>(
-            node_handle_ns_free_->serviceClient<ur_dashboard_msgs::Load>(service));
-        ur_dashboard_msgs::Load srvLoadProgram;
-        srvLoadProgram.request.filename = external_program_;
-        if (clientLoadProgram->call(srvLoadProgram))
-        {
-            if (srvLoadProgram.response.success)
-            {
-                res = true;
-                ROS_INFO_STREAM("program " << srvLoadProgram.request.filename << " is loaded successfully");
-            }
-            else
-            {
-                ROS_ERROR_STREAM("failed to execute service " << service << " to load program file "
-                    << srvLoadProgram.request.filename);
-            }
-        }
-        else
-        {
-            ROS_ERROR_STREAM("failed to call service " << service);
-        }
-
-        return res;
-    }
-
     std::string UrRobotDriverBridge::getLoadedProgram()
     {
         std::string loaded;
@@ -401,10 +376,37 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
         return loaded;
     }
 
-    bool UrRobotDriverBridge::deactiveRunningProgram()
+    int UrRobotDriverBridge::requestLoadProgram()
     {
-        bool res = false;
+        // service load_program
+        std::string service(service_prefix_ + prefix_dashboard_ + "load_program");
+        auto clientLoadProgram = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<ur_dashboard_msgs::Load>(service));
+        ur_dashboard_msgs::Load srvLoadProgram;
+        srvLoadProgram.request.filename = external_program_;
+        if (clientLoadProgram->call(srvLoadProgram))
+        {
+            if (srvLoadProgram.response.success)
+            {
+                ROS_INFO_STREAM("program " << srvLoadProgram.request.filename << " is loaded successfully");
+                return RES_SUCCEED;
+            }
+            else
+            {
+                ROS_WARN_STREAM("failed to execute service " << service << " to load program file "
+                    << srvLoadProgram.request.filename);
+                return RES_FAILED_EXECUTE;
+            }
+        }
+        else
+        {
+            ROS_ERROR_STREAM("failed to call service " << service);
+            return RES_FAILED_CALL;
+        }
+    }
 
+    int UrRobotDriverBridge::deactiveRunningProgram()
+    {
         std::string service(service_prefix_ + prefix_dashboard_ + "program_running");
         auto clientRunning = std::make_unique<ros::ServiceClient>(
             node_handle_ns_free_->serviceClient<ur_dashboard_msgs::IsProgramRunning>(service));
@@ -422,24 +424,30 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
                     if (srv.response.success)
                     {
                         ROS_INFO_STREAM("stop running program successfully");
+                        return RES_SUCCEED;
+                    }
+                    else
+                    {
+                        ROS_WARN_STREAM("failed to execute service " << service << " to deactivate program");
+                        return RES_FAILED_EXECUTE;
                     }
                 }
             }
-
-            res = true;
+            else
+            {
+                ROS_INFO_STREAM("program is not running yet");
+                return RES_SUCCEED;
+            }
         }
         else
         {
             ROS_ERROR_STREAM("failed to call service " << service);
+            return RES_FAILED_CALL;
         }
-
-        return res;
     }
 
-    bool UrRobotDriverBridge::requestPlay()
+    int UrRobotDriverBridge::requestPlay()
     {
-        bool res = false;
-
         // service play
         std::string service(service_prefix_ + prefix_dashboard_ + "play");
         auto clientPlay = std::make_unique<ros::ServiceClient>(
@@ -449,26 +457,52 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
         {
             if (srv.response.success)
             {
-                res = true;
                 ROS_INFO_STREAM("UR is standby");
+                return RES_SUCCEED;
             }
             else
             {
-                ROS_ERROR_STREAM("failed to execute service " << service);
+                ROS_WARN_STREAM("failed to execute service " << service);
+                return RES_FAILED_EXECUTE;
             }
         }
         else
         {
             ROS_ERROR_STREAM("failed to call service " << service);
+            return RES_FAILED_CALL;
         }
-
-        return res;
     }
 
-    bool UrRobotDriverBridge::powerOff()
+    int UrRobotDriverBridge::powerOn()
     {
-        bool res = false;
+        // service power_on
+        std::string service(service_prefix_ + prefix_dashboard_ + "power_on");
+        auto clientPowerOn = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+        std_srvs::Trigger srv;
+        if (clientPowerOn->call(srv))
+        {
+            if (srv.response.success)
+            {
+                ROS_INFO_STREAM("power on successfully");
+                return RES_SUCCEED;
+            }
+            else
+            {
+                ROS_ERROR_STREAM("failed to execute service " << service);
+                return RES_FAILED_EXECUTE;
+            }
+        }
+        else
+        {
+            ROS_ERROR_STREAM("failed to call service " << service);
+            return RES_FAILED_CALL;
+        }
+    }
 
+    int UrRobotDriverBridge::powerOff()
+    {
+        // service power_off
         std::string service(service_prefix_ + prefix_dashboard_ + "power_off");
         auto clientPowerOff = std::make_unique<ros::ServiceClient>(
             node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
@@ -477,26 +511,51 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
         {
             if (srv.response.success)
             {
-                res = true;
                 ROS_INFO_STREAM("power off successfully");
+                return RES_SUCCEED;
             }
             else
             {
                 ROS_ERROR_STREAM("failed to execute service " << service);
+                return RES_FAILED_EXECUTE;
             }
         }
         else
         {
             ROS_ERROR_STREAM("failed to call service " << service);
+            return RES_FAILED_CALL;
         }
-
-        return res;
     }
 
-    bool UrRobotDriverBridge::closePopups()
+    int UrRobotDriverBridge::releaseBrake()
     {
-        bool res = true;
+        // service brake_release
+        std::string service(service_prefix_ + prefix_dashboard_ + "brake_release");
+        auto clientBrakeRelease = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+        std_srvs::Trigger srv;
+        if (clientBrakeRelease->call(srv))
+        {
+            if (srv.response.success)
+            {
+                ROS_INFO_STREAM("brake released successfully");
+                return RES_SUCCEED;
+            }
+            else
+            {
+                ROS_WARN_STREAM("failed to execute service " << service);
+                return RES_FAILED_EXECUTE;
+            }
+        }
+        else
+        {
+            ROS_ERROR_STREAM("failed to call service " << service);
+            return RES_FAILED_CALL;
+        }
+    }
 
+    int UrRobotDriverBridge::closePopups()
+    {
         // non-safty
         std::string service(service_prefix_ + prefix_dashboard_ + "close_popup");
         auto clientNonSafty = std::make_unique<ros::ServiceClient>(
@@ -510,14 +569,14 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
             }
             else
             {
-                res &= false;
-                ROS_ERROR_STREAM("failed to execute service " << service);
+                ROS_WARN_STREAM("failed to execute service " << service);
+                return RES_FAILED_EXECUTE;
             }
         }
         else
         {
-            res &= false;
             ROS_ERROR_STREAM("failed to call service " << service);
+            return RES_FAILED_CALL;
         }
 
         // safty
@@ -529,20 +588,19 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
             if (srv.response.success)
             {
                 ROS_INFO_STREAM("safety popup is closed successfully");
+                return RES_SUCCEED;
             }
             else
             {
-                res &= false;
-                ROS_ERROR_STREAM("failed to execute service " << service);
+                ROS_WARN_STREAM("failed to execute service " << service);
+                return RES_FAILED_EXECUTE;
             }
         }
         else
         {
-            res &= false;
             ROS_ERROR_STREAM("failed to call service " << service);
+            return RES_FAILED_CALL;
         }
-
-        return res;
     }
 
     bool UrRobotDriverBridge::isProtective()
@@ -575,38 +633,32 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
         }
     }
 
-    bool UrRobotDriverBridge::recoverFromProtective()
+    int UrRobotDriverBridge::recoverFromProtective()
     {
-        bool res = false;
-
         // unlock protective
         std::string service(service_prefix_ + prefix_dashboard_ + "unlock_protective_stop");
         auto clientUnlockProtective = std::make_unique<ros::ServiceClient>(
             node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
         std_srvs::Trigger srv;
-        if (!clientUnlockProtective->call(srv))
-        {
-            ROS_ERROR_STREAM("failed to call service " << service);
-        }
-        else
+        if (clientUnlockProtective->call(srv))
         {
             if (srv.response.success)
             {
-                res = true;
                 ROS_INFO_STREAM("UR is recovered from protective state");
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                return RES_SUCCEED;
             }
             else
             {
-                ROS_ERROR_STREAM("failed to execute service " << service);
+                ROS_WARN_STREAM("failed to execute service " << service);
+                return RES_FAILED_EXECUTE;
             }
         }
-
-        if (res)
+        else
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            ROS_ERROR_STREAM("failed to call service " << service);
+            return RES_FAILED_CALL;
         }
-        
-        return res;
     }
 
     bool UrRobotDriverBridge::isInRemote()
@@ -645,10 +697,8 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
         }   
     }
 
-    bool UrRobotDriverBridge::disconnect()
+    int UrRobotDriverBridge::disconnect()
     {
-        bool res = false;
-
         std::string service(service_prefix_ + prefix_dashboard_ + "quit");
         auto clientQuit = std::make_unique<ros::ServiceClient>(
             node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
@@ -657,26 +707,24 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
         {
             if (srv.response.success)
             {
-                res = true;
                 ROS_INFO_STREAM("disconnect successfully");
+                return RES_SUCCEED;
             }
             else
             {
-                ROS_ERROR_STREAM("failed to disconnect");
+                ROS_WARN_STREAM("failed to disconnect");
+                return RES_FAILED_EXECUTE;
             }
         }
         else
         {
             ROS_ERROR_STREAM("failed to call service " << service);
+            return RES_FAILED_CALL;
         }
-
-        return res;
     }
 
-    bool UrRobotDriverBridge::reconnect()
+    int UrRobotDriverBridge::reconnect()
     {
-        bool res = false;
-
         std::string service(service_prefix_ + prefix_dashboard_ + "connect");
         auto clientConnect = std::make_unique<ros::ServiceClient>(
             node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
@@ -685,20 +733,20 @@ std::cout << "state idleeeeeeeeeeeeeeee calling brake release" << std::endl;
         {
             if (srv.response.success)
             {
-                res = true;
                 ROS_INFO_STREAM("reconnect successfully");
+                return RES_SUCCEED;
             }
             else
             {
-                ROS_ERROR_STREAM("failed to reconnect");
+                ROS_WARN_STREAM("failed to reconnect");
+                return RES_FAILED_EXECUTE;
             }
         }
         else
         {
             ROS_ERROR_STREAM("failed to call service " << service);
+            return RES_FAILED_CALL;
         }
-
-        return res;
     }
 
     bool UrRobotDriverBridge::onServiceIo(whi_interfaces::WhiSrvIo::Request& Request,

@@ -40,18 +40,20 @@ namespace whi_ur_robot_driver_bridge
         void init();
         void beStandby();
         void threadSafty();
-        bool requestLoadProgram();
         std::string getLoadedProgram();
-        bool deactiveRunningProgram();
-        bool requestPlay();
-        bool powerOff();
-        bool closePopups();
+        int requestLoadProgram();
+        int deactiveRunningProgram();
+        int requestPlay();
+        int powerOn();
+        int powerOff();
+        int releaseBrake();
+        int closePopups();
         bool isProtective();
-        bool recoverFromProtective();
+        int recoverFromProtective();
         bool isInRemote();
         bool isProgramRunning();
-        bool disconnect();
-        bool reconnect();
+        int disconnect();
+        int reconnect();
         bool onServiceIo(whi_interfaces::WhiSrvIo::Request& Request, whi_interfaces::WhiSrvIo::Response& Response);
         bool onServiceReady(std_srvs::Trigger::Request& Request, std_srvs::Trigger::Response& Response);
         void callbackMotionState(const std_msgs::Bool::ConstPtr& Msg);
@@ -75,5 +77,6 @@ namespace whi_ur_robot_driver_bridge
         std::unique_ptr<ros::ServiceServer> server_io_{ nullptr };
         std::unique_ptr<ros::ServiceServer> server_ready_{ nullptr };
         bool moveit_cpp_ready_{ false };
+        enum Res { RES_SUCCEED = 0, RES_FAILED_EXECUTE, RES_FAILED_CALL };
 	};
 } // namespace whi_ur_robot_driver_bridge
