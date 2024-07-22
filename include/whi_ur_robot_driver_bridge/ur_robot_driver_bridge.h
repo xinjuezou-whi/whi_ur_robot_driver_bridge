@@ -48,7 +48,7 @@ namespace whi_ur_robot_driver_bridge
         int powerOff();
         int releaseBrake();
         int closePopups();
-        bool isProtective();
+        int isProtective(bool& IsProtective);
         int recoverFromProtective();
         bool isInRemote();
         bool isProgramRunning();

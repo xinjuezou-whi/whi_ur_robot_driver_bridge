@@ -65,7 +65,7 @@ namespace whi_ur_robot_driver_bridge
 
         // create state publisher
         pub_motion_state_ = std::make_unique<ros::Publisher>(
-            node_handle_->advertise<whi_interfaces::WhiMotionState>("arm_moton_state", 1));
+            node_handle_->advertise<whi_interfaces::WhiMotionState>("arm_motion_state", 1));
 
         // safty monitoring thread
         double frequency = 0.0;
@@ -166,7 +166,9 @@ namespace whi_ur_robot_driver_bridge
                 // close popups
                 closePopups();
                 // recover from protective
-                if (isProtective())
+                bool protective = false;
+                isProtective(protective);
+                if (protective)
                 {
                     recoverFromProtective();
                 }
@@ -308,48 +310,70 @@ namespace whi_ur_robot_driver_bridge
     	    cv_.wait(lock, [this]{ return standby_; });
 	    }
 
+        bool disconnected = false;
         while (!terminated_.load())
 	    {
-            /// query the safty state
-            if (isProtective())
+            if (disconnected)
             {
-                standby_ = false;
-
-                // recover and then reload the program
-                if (recoverFromProtective() != RES_FAILED_EXECUTE)
+                reconnect();
+                disconnected = closePopups() != RES_FAILED_CALL ? false : true;
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            }
+            else
+            {
+                /// query the safty state
+                bool protective = false;
+                if (isProtective(protective) == RES_SUCCEED)
                 {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(300));
-                    // close popups
-                    closePopups();
-
-                    // reload and replay
-                    if (requestLoadProgram() && requestPlay())
+                    if (protective)
                     {
-                        standby_ = true;
+                        // notify depended ones
+                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+                        standby_ = false;
+
+                        // recover
+                        int res = recoverFromProtective();
+                        if (res != RES_FAILED_CALL)
+                        {
+                            // close popups
+                            closePopups();
+
+                            // reload and replay
+                            if (requestPlay() != RES_FAILED_CALL)
+                            {
+                                standby_ = true;
+                            }
+                            else
+                            {
+                                disconnected = true;
+                            }
+                        }
+                        else
+                        {
+                            disconnected = true;
+                        }
+                    }
+                    else
+                    {
+                        // send standby message
+                        whi_interfaces::WhiMotionState msg;
+                        if (sub_moveit_cpp_state_)
+                        {
+                            msg.state = moveit_cpp_ready_ ?
+                                whi_interfaces::WhiMotionState::STA_STANDBY : whi_interfaces::WhiMotionState::STA_BOOTING;
+                        }
+                        else
+                        {
+                            msg.state = whi_interfaces::WhiMotionState::STA_STANDBY;
+                        }
+                        pub_motion_state_->publish(msg);
                     }
                 }
                 else
                 {
-                    disconnect();
-                    reconnect();
-                    closePopups();
-                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                    disconnected = true;
                 }
-            }
-            else
-            {
-                // send standby message
-                whi_interfaces::WhiMotionState msg;
-                if (sub_moveit_cpp_state_)
-                {
-                    msg.state = moveit_cpp_ready_ ?
-                        whi_interfaces::WhiMotionState::STA_STANDBY : whi_interfaces::WhiMotionState::STA_BOOTING;
-                }
-                else
-                {
-                    msg.state = whi_interfaces::WhiMotionState::STA_STANDBY;
-                }
-                pub_motion_state_->publish(msg);
             }
 
             std::this_thread::sleep_for(std::chrono::milliseconds(safty_query_duration_));
@@ -603,7 +627,7 @@ namespace whi_ur_robot_driver_bridge
         }
     }
 
-    bool UrRobotDriverBridge::isProtective()
+    int UrRobotDriverBridge::isProtective(bool& IsProtective)
     {
         // service get_safty_mode
         std::string service(service_prefix_ + prefix_dashboard_ + "get_safety_mode");
@@ -618,18 +642,23 @@ namespace whi_ur_robot_driver_bridge
                 msg.state = whi_interfaces::WhiMotionState::STA_FAULT;
                 pub_motion_state_->publish(msg);
 
+                IsProtective = true;
+
                 ROS_WARN_STREAM("UR entered protective stop state");
-                return true;
             }
             else
             {
-                return false;
+                IsProtective = false;
             }
+
+            return RES_SUCCEED;
         }
         else
         {
-            closePopups();
-            return true;
+            IsProtective = false;
+
+            ROS_ERROR_STREAM("failed to call service " << service);
+            return RES_FAILED_CALL;
         }
     }
 
