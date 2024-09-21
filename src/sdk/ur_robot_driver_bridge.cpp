@@ -24,6 +24,7 @@ All text above must be included in any redistribution.
 #include <ur_dashboard_msgs/Load.h>
 #include <ur_dashboard_msgs/IsProgramRunning.h>
 #include <ur_dashboard_msgs/IsInRemoteControl.h>
+#include <ur_msgs/SetPayload.h>
 #include <ur_msgs/SetIO.h>
 #include <std_srvs/Trigger.h>
 
@@ -309,6 +310,12 @@ namespace whi_ur_robot_driver_bridge
 		    std::unique_lock lock(mtx_);
     	    cv_.wait(lock, [this]{ return standby_; });
 	    }
+
+        // set payload
+        if (!setPayload())
+        {
+            ROS_WARN_STREAM("failed to set payload");
+        }
 
         bool disconnected = false;
         while (!terminated_.load())
@@ -778,6 +785,39 @@ namespace whi_ur_robot_driver_bridge
         }
     }
 
+    bool UrRobotDriverBridge::setPayload()
+    {
+        double weight;
+        node_handle_->param("payload_weight", weight, 1.0);
+        std::vector<double> payload2Tcp;
+        if (!node_handle_->getParam("payload_to_tcp", payload2Tcp))
+        {
+            payload2Tcp.resize(3);
+        }
+        std::string service(service_prefix_ + "set_payload");
+        auto client = std::make_unique<ros::ServiceClient>(
+            node_handle_->serviceClient<ur_msgs::SetPayload>(service));
+        ur_msgs::SetPayload srv;
+        srv.request.mass = weight;
+        srv.request.center_of_gravity.x = payload2Tcp[0];
+        srv.request.center_of_gravity.y = payload2Tcp[1];
+        srv.request.center_of_gravity.z = payload2Tcp[2];
+        if (client->call(srv))
+        {
+            if (!srv.response.success)
+            {
+                ROS_ERROR_STREAM("failed to execute service " << service);
+            }
+        }
+        else
+        {
+            srv.response.success = false;
+            ROS_ERROR_STREAM("failed to call service " << service);
+        }
+
+        return srv.response.success;
+    }
+
     bool UrRobotDriverBridge::onServiceIo(whi_interfaces::WhiSrvIo::Request& Request,
         whi_interfaces::WhiSrvIo::Response& Response)
     {
@@ -802,7 +842,7 @@ namespace whi_ur_robot_driver_bridge
             else
             {
                 ROS_ERROR_STREAM("failed to call service " << service);
-            }            
+            }
         }
         else
         {
