@@ -4,5 +4,5 @@ whi_ur_robot_driver_bridge:
   try_duration: 10 # second
   try_max_count: 20
   external_program: external_ctrl.urp
-  protective_query_frequency: 10.0 # Hz
+  protective_query_frequency: 20.0 # Hz
   moveit_cpp_state_topic: whi_moveit_cpp_bridge/moveit_cpp_state #/whi/ur_combined/whi_moveit_cpp_bridge/moveit_cpp_state

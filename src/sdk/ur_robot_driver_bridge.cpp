@@ -27,6 +27,8 @@ All text above must be included in any redistribution.
 #include <ur_msgs/SetPayload.h>
 #include <ur_msgs/SetIO.h>
 #include <std_srvs/Trigger.h>
+#include <trajectory_msgs/JointTrajectory.h>
+#include <controller_manager_msgs/ListControllers.h>
 
 #include <thread>
 
@@ -288,7 +290,6 @@ namespace whi_ur_robot_driver_bridge
                                 }
                                 else
                                 {
-                                    reconnect();
                                     closePopups();
                                 }
                             }
@@ -645,6 +646,29 @@ namespace whi_ur_robot_driver_bridge
         {
             if (srvSafetyMode.response.safety_mode.mode == ur_dashboard_msgs::SafetyMode::PROTECTIVE_STOP)
             {
+                // let the "External Control" program node on the UR-Program return
+                handBackControl();
+                auto clientControllerManager = std::make_unique<ros::ServiceClient>(
+                    node_handle_ns_free_->serviceClient<controller_manager_msgs::ListControllers>("controller_manager/list_controllers"));
+                // get the controller name through service
+                std::string controllerName("controllers/scaled_pos_controller");
+                controller_manager_msgs::ListControllers srv;
+                if (clientControllerManager->call(srv))
+                {
+                    for (const auto& it : srv.response.controller)
+                    {
+                        if (it.state == "running" && !it.claimed_resources.front().resources.empty())
+                        {
+                            controllerName.assign(it.name);
+                        }
+                    }
+                }
+                // abort the goal with preemption policy
+                auto pub_preempt = std::make_unique<ros::Publisher>(
+                    node_handle_ns_free_->advertise<trajectory_msgs::JointTrajectory>("/whi/ur_combined/" + controllerName + "/command", 1));
+                trajectory_msgs::JointTrajectory preempt;
+                pub_preempt->publish(preempt);
+
                 whi_interfaces::WhiMotionState msg;
                 msg.state = whi_interfaces::WhiMotionState::STA_FAULT;
                 pub_motion_state_->publish(msg);
@@ -803,6 +827,28 @@ namespace whi_ur_robot_driver_bridge
         srv.request.center_of_gravity.y = payload2Tcp[1];
         srv.request.center_of_gravity.z = payload2Tcp[2];
         if (client->call(srv))
+        {
+            if (!srv.response.success)
+            {
+                ROS_ERROR_STREAM("failed to execute service " << service);
+            }
+        }
+        else
+        {
+            srv.response.success = false;
+            ROS_ERROR_STREAM("failed to call service " << service);
+        }
+
+        return srv.response.success;
+    }
+
+    bool UrRobotDriverBridge::handBackControl()
+    {
+        std::string service(service_prefix_ + "hand_back_control");
+        auto clientHandback = std::make_unique<ros::ServiceClient>(
+            node_handle_ns_free_->serviceClient<std_srvs::Trigger>(service));
+        std_srvs::Trigger srv;
+        if (clientHandback->call(srv))
         {
             if (!srv.response.success)
             {

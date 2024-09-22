@@ -55,6 +55,7 @@ namespace whi_ur_robot_driver_bridge
         int disconnect();
         int reconnect();
         bool setPayload();
+        bool handBackControl();
         bool onServiceIo(whi_interfaces::WhiSrvIo::Request& Request, whi_interfaces::WhiSrvIo::Response& Response);
         bool onServiceReady(std_srvs::Trigger::Request& Request, std_srvs::Trigger::Response& Response);
         void callbackMotionState(const std_msgs::Bool::ConstPtr& Msg);
