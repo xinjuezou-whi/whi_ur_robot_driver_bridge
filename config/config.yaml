@@ -7,3 +7,5 @@ whi_ur_robot_driver_bridge:
     external_program: external_ctrl.urp
     protective_query_frequency: 20.0 # Hz
     moveit_cpp_state_topic: moveit_cpp_state #/whi/ur_combined/whi_moveit_cpp_bridge/moveit_cpp_state
+    debug:
+      print_standby_state: false

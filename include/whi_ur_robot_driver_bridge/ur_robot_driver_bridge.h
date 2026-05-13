@@ -41,21 +41,22 @@ namespace whi_ur_robot_driver_bridge
 
     protected:
         void init();
-        void beStandby();
+        void beStandby(bool PrintState);
         void threadSafty();
         std::string getLoadedProgram();
         int requestLoadProgram();
         int deactiveRunningProgram();
         int requestPlay();
         int powerOn();
-        int powerOff();
+        int powerOff(bool Sync = true);
         int releaseBrake();
         int closePopups();
-        int isProtective(bool& IsProtective);
+        int isProtective(bool& IsProtective, bool Sync = true);
         int recoverFromProtective();
+        int stopProgram(bool Sync = true);
         bool isInRemote();
         bool isProgramRunning();
-        int disconnect();
+        int disconnect(bool Sync = true);
         int reconnect();
         bool setPayload();
         bool handBackControl();

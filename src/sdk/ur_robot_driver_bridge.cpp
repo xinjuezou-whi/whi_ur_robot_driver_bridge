@@ -33,8 +33,6 @@ All text above must be included in any redistribution.
 
 #include <thread>
 
-#define DEBUG
-
 namespace whi_ur_robot_driver_bridge
 {
     UrRobotDriverBridge::UrRobotDriverBridge(std::shared_ptr<rclcpp::Node>& NodeHandle)
@@ -45,8 +43,9 @@ namespace whi_ur_robot_driver_bridge
 
     UrRobotDriverBridge::~UrRobotDriverBridge()
     {
-        powerOff();
-        disconnect();
+        stopProgram(false);
+        powerOff(false);
+        disconnect(false);
 
         terminated_.store(true);
 	    if (th_safty_.joinable())
@@ -82,7 +81,9 @@ namespace whi_ur_robot_driver_bridge
         }
 
         // to initiate
-        beStandby();
+        node_handle_->declare_parameter("debug.print_standby_state", false);
+        bool printStandbyState = node_handle_->get_parameter("debug.print_standby_state").as_bool();
+        beStandby(printStandbyState);
 
         // advertise io service with fixed name
         server_io_ = node_handle_->create_service<whi_interfaces::srv::WhiSrvIo>("io_request",
@@ -100,11 +101,11 @@ namespace whi_ur_robot_driver_bridge
         }
     }
 
-    void UrRobotDriverBridge::beStandby()
+    void UrRobotDriverBridge::beStandby(bool PrintState)
     {
         std::thread
         {
-            [this]() -> void
+            [this, PrintState]() -> void
             {
                 whi_interfaces::msg::WhiMotionState msg;
                 msg.state = whi_interfaces::msg::WhiMotionState::STA_BOOTING;
@@ -196,14 +197,16 @@ namespace whi_ur_robot_driver_bridge
                     {
                         if (result->robot_mode.mode == ur_dashboard_msgs::msg::RobotMode::POWER_OFF)
                         {
-#ifdef DEBUG
-    std::cout << "beStandby state calling power on" << std::endl;
-#endif       
+                            if (PrintState)
+                            {
+                                std::cout << "beStandby state calling ------> power on" << std::endl;
+                            }
                             if (powerOn() == RES_FAILED_EXECUTE)
                             {
-#ifdef DEBUG
-    std::cout << "beStandby state calling disconnect and reconnect" << std::endl;
-#endif  
+                                if (PrintState)
+                                {
+                                    std::cout << "beStandby state calling power on failed ------> disconnect and reconnect" << std::endl;
+                                }
                                 disconnect();
                                 reconnect();
                                 closePopups();
@@ -211,13 +214,22 @@ namespace whi_ur_robot_driver_bridge
                         }
                         else if (result->robot_mode.mode == ur_dashboard_msgs::msg::RobotMode::IDLE)
                         {
+                            if (PrintState)
+                            {
+                                std::cout << "beStandby state calling ------> get loaded program" << std::endl;
+                            }
                             if (getLoadedProgram().find(external_program_) != std::string::npos)
                             {
-#ifdef DEBUG
-    std::cout << "beStandby state calling brake release" << std::endl;
-#endif  
+                                if (PrintState)
+                                {
+                                    std::cout << "beStandby state calling ------>brake release" << std::endl;
+                                }
                                 if (releaseBrake() == RES_FAILED_EXECUTE)
                                 {
+                                    if (PrintState)
+                                    {
+                                        std::cout << "beStandby state calling brake release failed ------> disconnect and reconnect" << std::endl;
+                                    }
                                     disconnect();
                                     reconnect();
                                     closePopups();
@@ -225,11 +237,16 @@ namespace whi_ur_robot_driver_bridge
                             }
                             else
                             {
-#ifdef DEBUG
-    std::cout << "beStandby state calling program load" << std::endl;
-#endif  
+                                if (PrintState)
+                                {
+                                    std::cout << "beStandby state calling ------> program load" << std::endl;
+                                }
                                 if (requestLoadProgram() == RES_FAILED_EXECUTE)
                                 {
+                                    if (PrintState)
+                                    {
+                                        std::cout << "beStandby state calling program load failed ------> disconnect and reconnect" << std::endl;
+                                    }
                                     disconnect();
                                     reconnect();
                                     closePopups();
@@ -242,23 +259,40 @@ namespace whi_ur_robot_driver_bridge
                         }
                         else if (result->robot_mode.mode == ur_dashboard_msgs::msg::RobotMode::RUNNING)
                         {
-#ifdef DEBUG
-    std::cout << "beStandby state calling power on" << std::endl;
-#endif  
+                            if (PrintState)
+                            {
+                                std::cout << "beStandby state calling ------> get loaded program" << std::endl;
+                            }
                             if (getLoadedProgram().find(external_program_) == std::string::npos)
                             {
+                                if (PrintState)
+                                {
+                                    std::cout << "beStandby state calling ------> deactive running program" << std::endl;
+                                }
                                 int res = deactiveRunningProgram();
                                 if (res == RES_FAILED_EXECUTE)
                                 {
+                                    if (PrintState)
+                                    {
+                                        std::cout << "beStandby state calling deactive running program failed ------> disconnect and reconnect" << std::endl;
+                                    }
                                     disconnect();
                                     reconnect();
                                     closePopups();
                                 }
                                 else
                                 {
+                                    if (PrintState)
+                                    {
+                                        std::cout << "beStandby state calling ------> program load" << std::endl;
+                                    }
                                     std::this_thread::sleep_for(std::chrono::milliseconds(200));
                                     if (requestLoadProgram() == RES_FAILED_EXECUTE)
                                     {
+                                        if (PrintState)
+                                        {
+                                            std::cout << "beStandby state calling program load failed ------> disconnect and reconnect" << std::endl;
+                                        }
                                         disconnect();
                                         reconnect();
                                         closePopups();
@@ -277,10 +311,22 @@ namespace whi_ur_robot_driver_bridge
                             }
                             else
                             {
+                                if (PrintState)
+                                {
+                                    std::cout << "beStandby state calling ------> is program running" << std::endl;
+                                }
                                 if (!isProgramRunning())
                                 {
+                                    if (PrintState)
+                                    {
+                                        std::cout << "beStandby state calling ------> request play" << std::endl;
+                                    }
                                     if (requestPlay() == RES_FAILED_EXECUTE)
                                     {
+                                        if (PrintState)
+                                        {
+                                            std::cout << "beStandby state calling request play failed ------> disconnect and reconnect" << std::endl;
+                                        }
                                         disconnect();
                                         reconnect();
                                         closePopups();
@@ -288,6 +334,10 @@ namespace whi_ur_robot_driver_bridge
                                 }
                                 else
                                 {
+                                    if (PrintState)
+                                    {
+                                        std::cout << "beStandby state ------> robot and program is running" << std::endl;
+                                    }
                                     if (++programRunningCount >= 3)
                                     {
                                         std::lock_guard<std::mutex> lock(mtx_);
@@ -309,9 +359,11 @@ namespace whi_ur_robot_driver_bridge
                         RCLCPP_ERROR_STREAM(node_handle_->get_logger(), "failed to call service " << service);
                     }
 
-#ifdef DEBUG
-    std::cout << "beStandby state robot mode in loop " << int(result->robot_mode.mode) << std::endl;
-#endif        
+                    if (PrintState)
+                    {
+                        std::cout << "beStandby state robot mode in loop " << int(result->robot_mode.mode) << std::endl;
+                    }
+    
                     std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 }
             }
@@ -344,7 +396,7 @@ namespace whi_ur_robot_driver_bridge
             {
                 /// query the safty state
                 bool protective = false;
-                if (isProtective(protective) == RES_SUCCEED)
+                if (isProtective(protective, (terminated_.load() ? false : true)) == RES_SUCCEED)
                 {
                     if (protective)
                     {
@@ -359,6 +411,9 @@ namespace whi_ur_robot_driver_bridge
                         {
                             // close popups
                             closePopups();
+
+                            // stop program otherwise "other thread is running" will be poped out
+                            stopProgram();
 
                             // reload and replay
                             if (requestPlay() != RES_FAILED_EXECUTE)
@@ -455,21 +510,7 @@ namespace whi_ur_robot_driver_bridge
         {
             if (result->program_running)
             {
-                service.assign(prefix_dashboard_ + "stop");
-                auto clientStop = node_handle_->create_client<std_srvs::srv::Trigger>(service);
-                auto requestStop = std::make_shared<std_srvs::srv::Trigger::Request>();
-                auto futureStop = clientStop->async_send_request(requestStop);
-                auto resultStop = futureStop.get();
-                if (resultStop->success)
-                {
-                    RCLCPP_INFO_STREAM(node_handle_->get_logger(), "stop running program successfully");
-                    return RES_SUCCEED;
-                }
-                else
-                {
-                    RCLCPP_WARN_STREAM(node_handle_->get_logger(), "failed to execute service " << service << " to deactivate program");
-                    return RES_FAILED_EXECUTE;
-                }
+                return stopProgram();
             }
             else
             {
@@ -524,23 +565,30 @@ namespace whi_ur_robot_driver_bridge
         }
     }
 
-    int UrRobotDriverBridge::powerOff()
+    int UrRobotDriverBridge::powerOff(bool Sync/* = true*/)
     {
         // service power_off
         std::string service(prefix_dashboard_ + "power_off");
         auto clientPowerOff = node_handle_->create_client<std_srvs::srv::Trigger>(service);
         auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
         auto future = clientPowerOff->async_send_request(request);
-        auto result = future.get();
-        if (result->success)
+        if (Sync)
         {
-            RCLCPP_INFO_STREAM(node_handle_->get_logger(), "power off successfully");
-            return RES_SUCCEED;
+            auto result = future.get();
+            if (result->success)
+            {
+                RCLCPP_INFO_STREAM(node_handle_->get_logger(), "power off successfully");
+                return RES_SUCCEED;
+            }
+            else
+            {
+                RCLCPP_ERROR_STREAM(node_handle_->get_logger(), "failed to execute service " << service);
+                return RES_FAILED_EXECUTE;
+            }
         }
         else
         {
-            RCLCPP_ERROR_STREAM(node_handle_->get_logger(), "failed to execute service " << service);
-            return RES_FAILED_EXECUTE;
+            return RES_SUCCEED;
         }
     }
 
@@ -599,47 +647,55 @@ namespace whi_ur_robot_driver_bridge
         }
     }
 
-    int UrRobotDriverBridge::isProtective(bool& IsProtective)
+    int UrRobotDriverBridge::isProtective(bool& IsProtective, bool Sync/* = true*/)
     {
         // service get_safty_mode
         std::string service(prefix_dashboard_ + "get_safety_mode");
         auto clientSafetyMode = node_handle_->create_client<ur_dashboard_msgs::srv::GetSafetyMode>(service);
         auto request = std::make_shared<ur_dashboard_msgs::srv::GetSafetyMode::Request>();
         auto future = clientSafetyMode->async_send_request(request);
-        auto result = future.get();
-        if (result->success)
+        if (Sync)
         {
-            if (result->safety_mode.mode == ur_dashboard_msgs::msg::SafetyMode::PROTECTIVE_STOP)
+            auto result = future.get();
+            if (result->success)
             {
-                // let the "External Control" program node on the UR-Program return
-                handBackControl();
+                if (result->safety_mode.mode == ur_dashboard_msgs::msg::SafetyMode::PROTECTIVE_STOP)
+                {
+                    // let the "External Control" program node on the UR-Program return
+                    handBackControl();
 
-                // cancel all goals preemption policy
-                auto actionClient = rclcpp_action::create_client<control_msgs::action::FollowJointTrajectory>(
-                    node_handle_, "scaled_joint_trajectory_controller/follow_joint_trajectory");
-                actionClient->async_cancel_all_goals();
+                    // cancel all goals preemption policy
+                    auto actionClient = rclcpp_action::create_client<control_msgs::action::FollowJointTrajectory>(
+                        node_handle_, "scaled_joint_trajectory_controller/follow_joint_trajectory");
+                    actionClient->async_cancel_all_goals();
 
-                whi_interfaces::msg::WhiMotionState msg;
-                msg.state = whi_interfaces::msg::WhiMotionState::STA_FAULT;
-                pub_motion_state_->publish(msg);
+                    whi_interfaces::msg::WhiMotionState msg;
+                    msg.state = whi_interfaces::msg::WhiMotionState::STA_FAULT;
+                    pub_motion_state_->publish(msg);
 
-                IsProtective = true;
+                    IsProtective = true;
 
-                RCLCPP_WARN_STREAM(node_handle_->get_logger(), "UR entered protective stop state");
+                    RCLCPP_WARN_STREAM(node_handle_->get_logger(), "UR entered protective stop state");
+                }
+                else
+                {
+                    IsProtective = false;
+                }
+
+                return RES_SUCCEED;
             }
             else
             {
                 IsProtective = false;
-            }
 
-            return RES_SUCCEED;
+                RCLCPP_WARN_STREAM(node_handle_->get_logger(), "failed to execute service " << service);
+                return RES_FAILED_EXECUTE;
+            }
         }
         else
         {
             IsProtective = false;
-
-            RCLCPP_WARN_STREAM(node_handle_->get_logger(), "failed to execute service " << service);
-            return RES_FAILED_EXECUTE;
+            return RES_SUCCEED;
         }
     }
 
@@ -661,6 +717,32 @@ namespace whi_ur_robot_driver_bridge
         {
             RCLCPP_WARN_STREAM(node_handle_->get_logger(), "failed to execute service " << service);
             return RES_FAILED_EXECUTE;
+        }
+    }
+
+    int UrRobotDriverBridge::stopProgram(bool Sync/* = true*/)
+    {
+        std::string service(prefix_dashboard_ + "stop");
+        auto clientStop = node_handle_->create_client<std_srvs::srv::Trigger>(service);
+        auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
+        auto future = clientStop->async_send_request(request);
+        if (Sync)
+        {
+            auto result = future.get();
+            if (result->success)
+            {
+                RCLCPP_INFO_STREAM(node_handle_->get_logger(), "stop running program successfully");
+                return RES_SUCCEED;
+            }
+            else
+            {
+                RCLCPP_WARN_STREAM(node_handle_->get_logger(), "failed to execute service " << service << " to deactivate program");
+                return RES_FAILED_EXECUTE;
+            }
+        }
+        else
+        {
+            return RES_SUCCEED;
         }
     }
 
@@ -702,22 +784,29 @@ namespace whi_ur_robot_driver_bridge
         } 
     }
 
-    int UrRobotDriverBridge::disconnect()
+    int UrRobotDriverBridge::disconnect(bool Sync/* = true*/)
     {
         std::string service(prefix_dashboard_ + "quit");
         auto clientQuit = node_handle_->create_client<std_srvs::srv::Trigger>(service);
         auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
         auto future = clientQuit->async_send_request(request);
-        auto result = future.get();
-        if (result->success)
+        if (Sync)
         {
-            RCLCPP_INFO_STREAM(node_handle_->get_logger(), "disconnect successfully");
-            return RES_SUCCEED;
+            auto result = future.get();
+            if (result->success)
+            {
+                RCLCPP_INFO_STREAM(node_handle_->get_logger(), "disconnect successfully");
+                return RES_SUCCEED;
+            }
+            else
+            {
+                RCLCPP_WARN_STREAM(node_handle_->get_logger(), "failed to disconnect");
+                return RES_FAILED_EXECUTE;
+            }
         }
         else
         {
-            RCLCPP_WARN_STREAM(node_handle_->get_logger(), "failed to disconnect");
-            return RES_FAILED_EXECUTE;
+            return RES_SUCCEED;
         }
     }
 
@@ -751,7 +840,7 @@ namespace whi_ur_robot_driver_bridge
         {
             payload2Tcp.resize(3);
         }
-        std::string service("set_payload");
+        std::string service("io_and_status_controller/set_payload");
         auto client = node_handle_->create_client<ur_msgs::srv::SetPayload>(service);
         auto request = std::make_shared<ur_msgs::srv::SetPayload::Request>();
         request->mass = weight;
@@ -795,7 +884,7 @@ namespace whi_ur_robot_driver_bridge
         // service SetIO
         if (Request->io.operation == whi_interfaces::msg::WhiIo::OPER_WRITE)
         {
-            std::string service("set_io");
+            std::string service("io_and_status_controller/set_io");
             auto client = node_handle_->create_client<ur_msgs::srv::SetIO>(service);
             auto request = std::make_shared<ur_msgs::srv::SetIO::Request>();
             request->fun = ur_msgs::srv::SetIO::Request::FUN_SET_DIGITAL_OUT;
