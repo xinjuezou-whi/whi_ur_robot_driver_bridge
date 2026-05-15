@@ -57,6 +57,9 @@
   <depend>controller_manager_msgs</depend>
   <depend>ur_dashboard_msgs</depend>
   <depend>rclcpp_action</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>bondcpp</depend>
+  <depend>bond</depend>
   <depend>whi_interfaces</depend>
 
   <!-- The export tag contains other, unspecified, tags -->

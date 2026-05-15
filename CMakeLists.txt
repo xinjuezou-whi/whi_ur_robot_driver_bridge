@@ -22,6 +22,9 @@ find_package(controller_manager_msgs REQUIRED)
 find_package(ur_msgs REQUIRED)
 find_package(ur_dashboard_msgs REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(rclcpp_lifecycle REQUIRED)
+find_package(bondcpp REQUIRED)
+find_package(bond REQUIRED)
 find_package(whi_interfaces REQUIRED)
 
 ###########
@@ -48,6 +51,9 @@ ament_target_dependencies(${PROJECT_NAME}
   ur_msgs
   ur_dashboard_msgs
   rclcpp_action
+  rclcpp_lifecycle
+  bondcpp
+  bond
   whi_interfaces
 )
 

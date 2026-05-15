@@ -13,6 +13,7 @@ All text above must be included in any redistribution.
 Changelog:
 2023-09-03: Initial version
 2026-04-27: Migrated from ROS 1
+2026-05-15: Switch to lifecycle node and add bond connection for lifecycle manager
 2026-xx-xx: xxx
 ******************************************************************/
 #include "whi_ur_robot_driver_bridge/ur_robot_driver_bridge.h"
@@ -35,17 +36,15 @@ void signalHandler(int Signal)
 int main(int argc, char** argv)
 {
 	/// node version and copyright announcement
-	std::cout << "\nWHI UR robot driver bridge VERSION 02.09.8" << std::endl;
+	std::cout << "\nWHI UR robot driver bridge VERSION 02.10.1" << std::endl;
 	std::cout << "Copyright © 2023-2026 Wheel Hub Intelligent Co.,Ltd. All rights reserved\n" << std::endl;
 
 	/// ros infrastructure
-    const std::string nodeName("whi_ur_robot_driver_bridge"); 
-
 	rclcpp::init(argc, argv);
-	auto nodeHandle = std::make_shared<rclcpp::Node>(nodeName);
 
 	/// node logic
-	auto instance = std::make_unique<whi_ur_robot_driver_bridge::UrRobotDriverBridge>(nodeHandle);
+	const std::string nodeName("whi_ur_robot_driver_bridge"); 
+	auto instance = std::make_shared<whi_ur_robot_driver_bridge::UrRobotDriverBridge>(nodeName);
 
 	// override the default ros sigint handler, with this override the shutdown will be gracefull
     // NOTE: this must be set after the NodeHandle is created
@@ -63,10 +62,10 @@ int main(int argc, char** argv)
 	// service callbacks to load controllers can block the (main) control loop
 #if ASYNC
     auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
-    executor->add_node(nodeHandle);
+    executor->add_node(instance->get_node_base_interface());
     executor->spin();  // blocking until shutdown
 #else
-    rclcpp::spin(nodeHandle);
+    rclcpp::spin(instance->get_node_base_interface());
 #endif
 
 	std::cout << nodeName << " exited" << std::endl;
