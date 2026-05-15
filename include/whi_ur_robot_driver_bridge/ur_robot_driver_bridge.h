@@ -77,8 +77,9 @@ namespace whi_ur_robot_driver_bridge
         int reconnect();
         bool setPayload();
         bool handBackControl();
-        void onServiceIo(const std::shared_ptr<whi_interfaces::srv::WhiSrvIo::Request> Request,
-            std::shared_ptr<whi_interfaces::srv::WhiSrvIo::Response> Response);
+        void onServiceIo(std::shared_ptr<rclcpp::Service<whi_interfaces::srv::WhiSrvIo>> Service,
+            const std::shared_ptr<rmw_request_id_t> RequestHeader,
+            const std::shared_ptr<whi_interfaces::srv::WhiSrvIo::Request> Request); // nested service call type
         void onServiceReady(const std::shared_ptr<std_srvs::srv::Trigger::Request> Request,
             std::shared_ptr<std_srvs::srv::Trigger::Response> Response);
         void callbackMoveitCppState(const std_msgs::msg::Bool::SharedPtr Msg);

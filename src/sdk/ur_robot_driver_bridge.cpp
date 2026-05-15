@@ -119,8 +119,8 @@ namespace whi_ur_robot_driver_bridge
                 moveitTopic, rclcpp::QoS(10), std::bind(&UrRobotDriverBridge::callbackMoveitCppState, this, std::placeholders::_1));
         }
         // advertise io service with fixed name
-        server_io_ = create_service<whi_interfaces::srv::WhiSrvIo>("io_request",
-            std::bind(&UrRobotDriverBridge::onServiceIo, this, std::placeholders::_1, std::placeholders::_2));
+        server_io_ = create_service<whi_interfaces::srv::WhiSrvIo>("ur_io_request", 
+            std::bind(&UrRobotDriverBridge::onServiceIo, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
         server_ready_ = create_service<std_srvs::srv::Trigger>("arm_ready",
             std::bind(&UrRobotDriverBridge::onServiceReady, this, std::placeholders::_1, std::placeholders::_2));
         
@@ -990,9 +990,12 @@ namespace whi_ur_robot_driver_bridge
         }
     }
 
-    void UrRobotDriverBridge::onServiceIo(const std::shared_ptr<whi_interfaces::srv::WhiSrvIo::Request> Request,
-        std::shared_ptr<whi_interfaces::srv::WhiSrvIo::Response> Response)
+    void UrRobotDriverBridge::onServiceIo(std::shared_ptr<rclcpp::Service<whi_interfaces::srv::WhiSrvIo>> Service,
+        const std::shared_ptr<rmw_request_id_t> RequestHeader,
+        const std::shared_ptr<whi_interfaces::srv::WhiSrvIo::Request> Request)
     {
+        whi_interfaces::srv::WhiSrvIo::Response response;
+
         // service SetIO
         if (Request->io.operation == whi_interfaces::msg::WhiIo::OPER_WRITE)
         {
@@ -1002,22 +1005,23 @@ namespace whi_ur_robot_driver_bridge
             request->fun = ur_msgs::srv::SetIO::Request::FUN_SET_DIGITAL_OUT;
             request->pin = Request->io.addr;
             request->state = Request->io.level;
-            auto future = client->async_send_request(request);
-            auto result = future.get();
-            if (result->success)
+            client->async_send_request(request);
+
+            if (Service)
             {
-                Response->result = true;
-            }
-            else
-            {
-                Response->result = false;
-                RCLCPP_ERROR_STREAM(get_logger(), "failed to execute service " << service);
+                response.result = true;
+                Service->send_response(*RequestHeader, response);
             }
         }
         else
         {
-            Response->result = false;
             RCLCPP_ERROR_STREAM(get_logger(), "only write operation is supported in UR");
+
+            if (Service)
+            {
+                response.result = false;
+                Service->send_response(*RequestHeader, response);
+            }
         }
     }
 
