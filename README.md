@@ -1,9 +1,9 @@
 # whi_ur_robot_driver_bridge
-Launch ur_robot_driver while calling services to initialize the arm under remote control mode automatically, and advertise the service for IO manipulation. This bridge aims at a composite robotics integrated application
+Launch ur_robot_driver while calling the dashboard services to initialize the arm under remote control mode automatically, and advertise the service for IO manipulation. This bridge aims at a composite robotics integrated application
 
 Features:
- - Automatically power on the controller
- - Protective stop state recovery
+ - Automatically activate the ur controller
+ - Protective stop state monitoring and recovery
  - Digital output service
 
 ## Dependency
