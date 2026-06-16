@@ -45,6 +45,11 @@ It is recommended to extract the calibration params first, then feed it to ur_ro
 ros2 launch ur_calibration calibration_correction.launch.py robot_ip:=192.168.56.100 target_filename:=/home/nvidia/ur5e_calibration.yaml
 ```
 
+Then launch the bridge:
+```
+ros2 launch whi_ur_robot_driver_bridge launch.py arm_model:=ur5e robot_ip:=192.168.56.100 launch_rviz:=true
+```
+
 > NOTE: replace ur5e with specific UR model: ur3, ur5, ur10, ur3e, ur5e, ur10e, ur16e, ur20
 
 ## Advertised service
